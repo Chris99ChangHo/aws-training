@@ -1,0 +1,7 @@
+# Python 3.12 기준 (3.14는 pyarrow 사전빌드 wheel이 없어 streamlit 설치 실패)
+#   python3.12 -m venv .venv312
+#   .venv312/bin/pip install -r requirements.txt
+streamlit==1.51.0
+boto3==1.40.47
+# setup_02_create_kb.py 에서 OpenSearch Serverless 벡터 인덱스 생성에 사용
+opensearch-py==2.8.0

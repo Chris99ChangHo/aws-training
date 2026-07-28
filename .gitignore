@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.venv*/
+*.egg-info/
+
+# AWS credentials (never commit)
+.aws/
+*.pem
+*.key
+credentials
+credentials.json
+
+# Lambda 배포 산출물
+**/lambda/*.zip
+
+# 계정 ID, KB ID, 버킷명 등 계정별 값이 포함된 산출물
+**/kb_info.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
