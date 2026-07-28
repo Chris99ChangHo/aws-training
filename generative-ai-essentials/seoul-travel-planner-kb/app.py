@@ -44,7 +44,7 @@ THEMES: dict[str, dict[str, str]] = {
         "bg_secondary": "#F7F8FA",
         "text": "#1A1A2E",
         "text_muted": "#6B7280",
-        "accent": "#2563EB",
+        "accent": "#1D4ED8",
         "accent_soft": "#DBEAFE",
         "card_bg": "#FFFFFF",
         "card_border": "#E5E7EB",
