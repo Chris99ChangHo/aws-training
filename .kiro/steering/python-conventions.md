@@ -94,3 +94,17 @@ except client.exceptions.EntityAlreadyExistsException:
 
 **이유**: 실습 중 스크립트를 중간에 취소하거나 재실행하는 일이 잦다.
 멱등하지 않으면 매번 리소스를 수동으로 정리해야 한다.
+
+**주의 - `put_role_policy`는 항상 전체 덮어쓴다.** `create_role`은
+존재 확인 분기를 넣기 쉽지만, IAM 인라인 정책을 넣는
+`put_role_policy`는 create가 아니라 upsert라서 호출할 때마다 정책
+전체를 통째로 교체한다. 스크립트 밖에서 `put_role_policy`로 권한을
+임시로 추가해 둔 상태에서, 스크립트를 그대로 재실행하면 그 임시
+권한이 스크립트에 정의된 원래 정책으로 되돌아가며 사라진다.
+(restaurant-concierge-rag 실습에서 실제로 재현: 별도로 추가한
+`bedrock:Rerank` 권한이 `setup_02_create_kb.py` 재실행 한 번으로
+사라져 리랭킹 스크립트가 다시 깨졌다.)
+
+→ 필요한 권한은 처음부터 스크립트의 정책 정의 자체에 포함시킨다.
+"일단 콘솔/CLI로 임시로 추가하고 나중에 코드에 반영하자"는 접근은
+재실행 시 그대로 되돌아간다.

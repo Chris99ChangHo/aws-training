@@ -93,6 +93,13 @@ def inject_theme_css(mode: str) -> None:
             background-color: {t['bg']} !important;
             color: {t['text']};
         }}
+        /* layout="wide"로 화면 여백(흰 배경)을 없앴지만, 채팅 내용까지
+           화면 전체로 늘어지면 읽기 어려워지므로 중앙 콘텐츠 영역의
+           최대 폭을 제한한다. */
+        [data-testid="stAppViewContainer"] > .main .block-container {{
+            max-width: 900px;
+            margin: 0 auto;
+        }}
         [data-testid="stHeader"] {{
             background-color: {t['bg']} !important;
         }}
@@ -286,7 +293,7 @@ def main() -> None:
     st.set_page_config(
         page_title="강남 식당 컨시어지 챗봇",
         page_icon="🍽️",
-        layout="centered",
+        layout="wide",
     )
 
     if "theme" not in st.session_state:

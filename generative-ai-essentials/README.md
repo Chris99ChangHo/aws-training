@@ -5,6 +5,7 @@
 | 실습 | 내용 |
 |---|---|
 | [`seoul-travel-planner-kb/`](./seoul-travel-planner-kb) | Amazon Bedrock Knowledge Base 구축, 메타데이터 필터·하이브리드 서치·리랭킹, S3 이벤트 기반 자동 동기화, Streamlit 챗봇 |
+| [`restaurant-concierge-rag/`](./restaurant-concierge-rag) | Knowledge Base 고급 검색, Corrective RAG 라우터(Strands Agents SDK), FAISS 기반 멀티모달 메뉴판 검색 |
 
 ## 이론 정리
 

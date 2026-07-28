@@ -105,6 +105,23 @@ def ensure_role(iam, account_id: str, bucket: str) -> str:
                 "Action": "aoss:APIAccessAll",
                 "Resource": f"arn:aws:aoss:{REGION}:{account_id}:collection/*",
             },
+            {
+                # 2단계(03_rerank_search.py, 04_compare_all.py)의 Cohere
+                # Rerank 사용에 필요. 이 정책을 빼면 put_role_policy가
+                # 매번 정책 전체를 덮어써서, 별도로 추가했던 Rerank
+                # 권한이 재실행 시마다 사라지는 문제가 실제로 재현됨
+                # (2026-07-28 코드 리뷰에서 발견).
+                "Sid": "RerankSid",
+                "Effect": "Allow",
+                "Action": "bedrock:Rerank",
+                "Resource": "*",
+            },
+            {
+                "Sid": "InvokeRerankModel",
+                "Effect": "Allow",
+                "Action": "bedrock:InvokeModel",
+                "Resource": f"arn:aws:bedrock:{REGION}::foundation-model/cohere.rerank-v3-5:0",
+            },
         ],
     }
     iam.put_role_policy(
