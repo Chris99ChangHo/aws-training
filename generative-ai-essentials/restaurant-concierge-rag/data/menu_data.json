@@ -1,0 +1,22 @@
+[
+  {
+    "restaurant": "트라토리아 벨라",
+    "cuisine": "이탈리안",
+    "items": [
+      {"name": "까르보나라", "price": 22000, "description": "판체타와 페코리노 치즈를 사용한 정통 로마식"},
+      {"name": "마르게리타 피자", "price": 18000, "description": "수제 도우에 산 마르자노 토마토와 모짜렐라"},
+      {"name": "티라미수", "price": 12000, "description": "마스카포네 크림과 에스프레소 레이디핑거"}
+    ],
+    "atmosphere": "아늑한 조명과 벽돌 인테리어, 2인 데이트에 적합"
+  },
+  {
+    "restaurant": "한우명가",
+    "cuisine": "한식",
+    "items": [
+      {"name": "한우 등심 세트", "price": 65000, "description": "1++ 등급 한우 200g + 된장찌개 + 밑반찬"},
+      {"name": "육회 비빔밥", "price": 18000, "description": "신선한 한우 육회와 참기름 비빔밥"},
+      {"name": "갈비탕", "price": 16000, "description": "24시간 푹 고은 사골 국물의 왕갈비탕"}
+    ],
+    "atmosphere": "모던 한옥 스타일, 룸 좌석 4개, 가족 모임에 적합"
+  }
+]
