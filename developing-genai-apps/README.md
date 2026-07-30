@@ -2,7 +2,9 @@
 
 ## 실습
 
-(진행 예정)
+| 실습 | 폴더 | 내용 |
+|---|---|---|
+| 강남 다이닝 컨시어지 | [`gangnam-dining-concierge/`](./gangnam-dining-concierge) | Strands Agents 도구·MCP·세션 영속화·Streamlit 챗봇 UI |
 
 ## 이론 정리
 
