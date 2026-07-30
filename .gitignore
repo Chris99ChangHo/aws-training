@@ -18,6 +18,13 @@ credentials.json
 # 계정 ID, KB ID, 버킷명 등 계정별 값이 포함된 산출물
 **/kb_info.json
 
+# AgentCore CLI 배포 상태·타겟 (계정 ID, ARN 노출)
+**/agentcore/aws-targets.json
+**/agentcore/.cli/deployed-state.json
+
+# 대화 세션 저장 산출물 (대화 히스토리, 개인 취향 등 포함)
+**/sessions/
+
 # OS
 .DS_Store
 Thumbs.db

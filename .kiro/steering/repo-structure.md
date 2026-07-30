@@ -36,7 +36,15 @@ aws-training/
 단순 실행법만 적지 않고 아래를 함께 남긴다. 이 리포는 학습 기록이자
 포트폴리오이므로, **판단 근거가 결과보다 중요하다.**
 
-1. 사용 기술 목록
+1. 사용 기술 목록 — [shields.io](https://shields.io/badges/static-badge) 정적 배지로 표시.
+   제목 바로 아래, 첫 문단 위에 둔다.
+   ```markdown
+   ![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logo=amazonaws&logoColor=white)
+   ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+   ![Strands Agents](https://img.shields.io/badge/Strands_Agents-1.x-4B32C3)
+   ```
+   로고는 [simple-icons](https://simpleicons.org/) slug를 쓴다(`logo=` 값).
+   대상 없는 도구는 로고 없이 라벨-메시지-색상만 넣는다.
 2. 아키텍처 (텍스트 다이어그램으로 충분)
 3. **설계 결정과 트러블슈팅** — 겪은 문제, 원인 분석 과정, 해결 방법.
    "됐다/안 됐다"가 아니라 왜 그런 결과가 나왔는지 근거를 남긴다.
