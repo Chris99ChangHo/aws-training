@@ -1,0 +1,16 @@
+from strands import tool
+
+@tool
+def search_restaurants(query: str, location: str, budget: int = 50000) -> str:
+    """지역과 조건에 맞는 식당을 검색합니다.
+
+    Args:
+        query: 음식 종류 또는 키워드 (예: "이탈리안", "데이트")
+        location: 검색 지역 (예: "강남역")
+        budget: 1인 예산 원 단위 (기본값: 50000)
+
+    Returns:
+        검색된 식당 목록 문자열
+    """
+    # 도구 로직 구현
+    return f"{location} 근처 {query} 식당 3건 발견"

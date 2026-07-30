@@ -1,0 +1,5 @@
+도전 과제 1 
+
+MCP 도구 연결: MCPClient로 식당 검색 MCP 서버를 연결해보세요. (→ MCP 클라이언트 실습에서 상세히 다룹니다)
+Structured Output 심화: 여러 식당 정보를 List[Restaurant] 모델로 받아보세요.
+대화 관리: SlidingWindowConversationManager로 컨텍스트 윈도우를 제어해보세요. (→ Conversation Management 실습에서 상세히 다룹니다)

@@ -1,0 +1,11 @@
+# Bedrock
+from strands.models import BedrockModel
+agent = Agent(model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-6"))
+
+# Anthropic 직접
+from strands.models.anthropic import AnthropicModel
+agent = Agent(model=AnthropicModel(model_id="claude-sonnet-4-6"))
+
+# Ollama (로컬)
+from strands.models.ollama import OllamaModel
+agent = Agent(model=OllamaModel(model_id="llama3.1"))
