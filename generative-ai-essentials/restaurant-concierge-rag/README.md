@@ -1,5 +1,14 @@
 # 강남 식당 컨시어지 RAG — Amazon Bedrock Knowledge Base 실습
 
+![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logoColor=white)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-Serverless-005EB8?logo=opensearch&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.51-FF4B4B?logo=streamlit&logoColor=white)
+![Anthropic](https://img.shields.io/badge/Anthropic-Claude_Sonnet_4.6-191919?logo=anthropic&logoColor=white)
+![Strands Agents](https://img.shields.io/badge/Strands_Agents-1.x-4B32C3)
+![Cohere Rerank](https://img.shields.io/badge/Cohere-Rerank-39594D)
+![FAISS](https://img.shields.io/badge/FAISS-vector_search-0467DF)
+
 강남 식당 8곳 데이터로 Amazon Bedrock Knowledge Base를 구축하고,
 메타데이터 필터·하이브리드 서치·리랭킹으로 검색 품질을 개선한 뒤,
 Corrective RAG 라우터 에이전트(Strands Agents SDK)와 멀티모달
@@ -25,13 +34,9 @@ Bedrock Knowledge Base ── OpenSearch Serverless (벡터 인덱스)
    ▼
 Retrieve / RetrieveAndGenerate API
    │  메타데이터 필터 · 하이브리드 서치 · 리랭킹
-   ▼
-┌─────────────────────┬──────────────────────────┐
-│ Streamlit 챗봇        │ Corrective RAG 라우터      │
-│ (필터+멀티턴 대화)      │ (Strands Agents SDK)     │
-│                      │  KB검색→품질분류→라우팅     │
-│                      │  (KB / KB+웹 / 웹만)       │
-└─────────────────────┴──────────────────────────┘
+   ├──▶ Streamlit 챗봇 (필터 + 멀티턴 대화)
+   └──▶ Corrective RAG 라우터 (Strands Agents SDK)
+           KB 검색 → 품질 분류 → 라우팅 (KB / KB+웹 / 웹만)
 
 별도 파이프라인 (로컬, KB 미사용):
 menu_data.json → 캡셔닝 → Titan Embed V2 → FAISS 인덱스
@@ -39,6 +44,10 @@ menu_data.json → 캡셔닝 → Titan Embed V2 → FAISS 인덱스
 ```
 
 ## 설계 결정과 트러블슈팅
+
+이 실습은 Kiro CLI(모델: claude-sonnet-5)와 함께 진행했습니다. 아래
+트러블슈팅은 AI 에이전트가 실행한 도구 결과(로그·에러 메시지)를 근거로
+정리했으며, 어떤 해결 방향을 택할지는 사람이 검토·승인한 내용입니다.
 
 ### 1. 워크숍 가이드의 리전(`us-west-2`)과 사전 준비된 리소스(`us-east-1`) 불일치
 
