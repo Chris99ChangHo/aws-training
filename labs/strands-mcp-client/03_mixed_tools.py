@@ -1,17 +1,24 @@
 """@tool + MCPClient 혼합 — 외부 검색 + 로컬 예약 조합."""
+import random
+import sys
+from pathlib import Path
+
 from strands import Agent, tool
 from strands.models import BedrockModel
 from strands.tools.mcp import MCPClient
 from mcp.client.stdio import stdio_client
 from mcp import StdioServerParameters
-import random
 
 REGION = "us-west-2"
+
+# 실행 위치(cwd)가 아니라 이 스크립트 위치를 기준으로 서버 경로를 잡는다.
+_SERVER_PATH = Path(__file__).parent / "restaurant_server.py"
 
 # MCP 서버에서 검색 도구를 가져옴
 mcp = MCPClient(
     lambda: stdio_client(
-        StdioServerParameters(command="python", args=["restaurant_server.py"])
+        # sys.executable로 현재 가상환경 인터프리터를 그대로 재사용한다.
+        StdioServerParameters(command=sys.executable, args=[str(_SERVER_PATH)])
     )
 )
 
