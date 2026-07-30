@@ -1,5 +1,14 @@
 # 서울 여행 플래너 — Amazon Bedrock Knowledge Base 실습
 
+![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logoColor=white)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-Serverless-005EB8?logo=opensearch&logoColor=white)
+![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-FF9900?logoColor=white)
+![Amazon S3](https://img.shields.io/badge/Amazon-S3-569A31?logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.51-FF4B4B?logo=streamlit&logoColor=white)
+![Anthropic](https://img.shields.io/badge/Anthropic-Claude_Sonnet_4.6-191919?logo=anthropic&logoColor=white)
+![Cohere Rerank](https://img.shields.io/badge/Cohere-Rerank-39594D)
+
 서울 관광지 9곳 데이터로 Amazon Bedrock Knowledge Base를 구축하고,
 메타데이터 필터·하이브리드 서치·리랭킹을 적용해 검색 품질을 개선한 뒤,
 Streamlit으로 대화형 추천 챗봇을 만든 실습 기록입니다.
@@ -28,7 +37,7 @@ Bedrock Knowledge Base ── OpenSearch Serverless (벡터 인덱스, faiss/hns
 RetrieveAndGenerate / Retrieve API
    │  메타데이터 필터 · 하이브리드 서치 · 리랭킹
    ▼
-Streamlit App (Claude Sonnet 4.5, 멀티턴 세션 유지)
+Streamlit App (Claude Sonnet 4.6, 멀티턴 세션 유지)
 ```
 
 콘솔의 "Quick create" 벡터 스토어 마법사가 자동으로 처리하는 작업을
@@ -40,8 +49,11 @@ engine=faiss), Knowledge Base, S3 데이터 소스, ingestion job까지
 
 ## 설계 결정과 트러블슈팅
 
-실습하면서 실제로 겪은 문제와 원인 분석, 해결 방식입니다. 단순히
-"됐다/안 됐다"가 아니라 왜 그런 결과가 나왔는지 근거를 남기려 했습니다.
+이 실습은 Kiro CLI(모델: claude-sonnet-5)와 함께 진행했습니다. 아래
+트러블슈팅은 AI 에이전트가 실행한 도구 결과(로그·에러 메시지)를 근거로
+정리했으며, 어떤 해결 방향을 택할지는 사람이 검토·승인한 내용입니다.
+단순히 "됐다/안 됐다"가 아니라 왜 그런 결과가 나왔는지 근거를 남기려
+했습니다.
 
 ### 1. 하이브리드 서치가 효과 없어 보였던 이유
 
@@ -62,25 +74,16 @@ engine=faiss), Knowledge Base, S3 데이터 소스, ingestion job까지
 자연어 질의보다 정확한 고유명사·숫자가 포함된 질의에서 재현율이
 뚜렷하게 개선된다.
 
-### 2. Cohere Rerank가 AWS Marketplace 정책으로 차단됐던 사례
+### 2. Cohere Rerank 호출이 막혔던 사례 — 원인은 SCP가 아니라 리전 불일치
 
-`bedrock:Rerank`를 호출했는데 계속 `AccessDeniedException`이 발생해서,
-IAM 정책 시뮬레이터로 원인을 특정했습니다.
+`bedrock:Rerank`를 호출했는데 계속 `AccessDeniedException`이 발생했습니다.
+처음에는 IAM 정책 시뮬레이터로 `aws-marketplace:Subscribe` 계열 액션이
+`explicitDeny`로 나와 조직 SCP 차단으로 오판했지만, 실제 원인은 S3
+데이터와 KB를 실습 중 다른 리전에 생성해 리전이 어긋난 것이었습니다.
+원인 규명 과정 자체가 트러블슈팅 기록으로 남을 만해 남겨둡니다.
 
-```bash
-aws iam simulate-principal-policy \
-  --policy-source-arn <role-arn> \
-  --action-names "aws-marketplace:Subscribe" "aws-marketplace:ViewSubscriptions"
-# → 두 액션 모두 explicitDeny (조직 SCP 레벨 차단)
-```
-
-Cohere Rerank는 AWS Marketplace의 서드파티 모델이라 구독 검증 액션이
-필요한데, 계정 조직 정책(SCP)에서 이를 명시적으로 막고 있었습니다.
-`AdministratorAccess`를 가진 역할로도 동일하게 막혀서, IAM 정책을
-더 준다고 해결되는 문제가 아니라는 걸 확인했습니다.
-
-→ 대응: `03_rerank_search.py`에 Cohere를 먼저 시도하고, 권한 오류가
-나면 **Claude를 리랭커로 활용하는 LLM 기반 폴백**으로 자동 전환하도록
+→ 대응: `03_rerank_search.py`에 Cohere를 먼저 시도하고, 오류가 나면
+**Claude를 리랭커로 활용하는 LLM 기반 폴백**으로 자동 전환하도록
 구현했습니다. (질의, 후보 문서) 쌍의 관련도를 0~10점으로 채점하게 해
 Cross-encoder 리랭커와 같은 원리를 LLM 프롬프트로 재현한 방식입니다.
 

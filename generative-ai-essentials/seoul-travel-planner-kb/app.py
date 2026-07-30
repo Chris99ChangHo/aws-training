@@ -22,7 +22,7 @@ REGION = "us-east-1"
 KB_INFO_PATH = Path(__file__).parent / "kb_info.json"
 
 # 생성 모델. inference profile ARN이 필요해 계정 ID를 런타임에 조회한다.
-GEN_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+GEN_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
 
 # 사이드바 카테고리 드롭다운.
 # 값은 실제 메타데이터(travel-kb-ko/metadata/*.metadata.json)의 category와
@@ -71,21 +71,38 @@ THEMES: dict[str, dict[str, str]] = {
 
 
 def inject_theme_css(mode: str) -> None:
-    """선택된 테마 색상으로 커스텀 CSS를 주입해 UI를 다듣는다."""
+    """선택된 테마 색상으로 커스텀 CSS를 주입해 UI를 다시 그린다.
+
+    html/body와 Streamlit 표준 위젯(selectbox, button, toggle) 내부까지
+    명시적으로 덮어써야 한다. 그렇지 않으면 브라우저/OS의 시스템 다크
+    모드가 .stApp 바깥 영역과 위젯 내부에만 적용되어, 우리가 지정한
+    라이트 테마와 뒤섞여 검은 배경에 검은 텍스트 같은 충돌이 생긴다.
+    (이 문제는 실제로 재현되어 .streamlit/config.toml의 base="light"와
+    이 CSS 보강으로 함께 해결했다.)
+    """
     t = THEMES[mode]
     st.markdown(
         f"""
         <style>
-        .stApp {{
-            background-color: {t['bg']};
+        html, body, .stApp, [data-testid="stAppViewContainer"] {{
+            background-color: {t['bg']} !important;
             color: {t['text']};
         }}
+        [data-testid="stHeader"] {{
+            background-color: {t['bg']} !important;
+        }}
+        [data-testid="stBottomBlockContainer"] {{
+            background-color: {t['bg']} !important;
+        }}
         section[data-testid="stSidebar"] {{
-            background-color: {t['bg_secondary']};
+            background-color: {t['bg_secondary']} !important;
             border-right: 1px solid {t['card_border']};
         }}
-        h1, h2, h3, h4, p, span, label {{
+        section[data-testid="stSidebar"] * {{
             color: {t['text']} !important;
+        }}
+        h1, h2, h3, h4, p, span, label, div {{
+            color: {t['text']};
         }}
         .app-header {{
             padding: 0.5rem 0 1.2rem 0;
@@ -112,6 +129,7 @@ def inject_theme_css(mode: str) -> None:
         .destination-card h4 {{
             margin: 0 0 6px 0;
             font-size: 1.02rem;
+            color: {t['text']} !important;
         }}
         .destination-card .meta-row {{
             font-size: 0.86rem;
@@ -134,12 +152,32 @@ def inject_theme_css(mode: str) -> None:
             word-break: break-all;
             margin-top: 6px;
         }}
+        div[data-testid="stChatInput"] {{
+            background-color: {t['bg']} !important;
+        }}
         div[data-testid="stChatInput"] textarea {{
-            background-color: {t['bg_secondary']};
-            color: {t['text']};
+            background-color: {t['bg_secondary']} !important;
+            color: {t['text']} !important;
+        }}
+        /* 사이드바 selectbox: 선택창과 드롭다운 팝업 둘 다 지정해야
+           팝업이 열렸을 때 브라우저 기본 다크 스타일로 남지 않는다. */
+        div[data-baseweb="select"] > div {{
+            background-color: {t['card_bg']} !important;
+            border-color: {t['card_border']} !important;
+            color: {t['text']} !important;
+        }}
+        div[data-baseweb="popover"] li {{
+            background-color: {t['card_bg']} !important;
+            color: {t['text']} !important;
+        }}
+        div[data-baseweb="popover"] li:hover {{
+            background-color: {t['bg_secondary']} !important;
         }}
         .stButton>button {{
             border-radius: 8px;
+            background-color: {t['card_bg']} !important;
+            color: {t['text']} !important;
+            border: 1px solid {t['card_border']} !important;
         }}
         </style>
         """,

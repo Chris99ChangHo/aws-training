@@ -21,7 +21,7 @@ import boto3
 
 REGION = "us-east-1"
 QUERY = "역사 문화 체험 위주로 반나절 코스를 추천해 주세요"
-GEN_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+GEN_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
 _ACCOUNT_ID = boto3.client("sts", region_name=REGION).get_caller_identity()["Account"]
 GEN_MODEL_ARN = (
     f"arn:aws:bedrock:{REGION}:{_ACCOUNT_ID}:inference-profile/{GEN_MODEL_ID}"
