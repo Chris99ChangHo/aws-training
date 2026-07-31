@@ -52,6 +52,27 @@ aws-training/
 `.kiro/`, `.claude/`, `.codex/`의 에이전트 설정은 **생성물**입니다. 직접
 수정하지 않고 `agents/<이름>/adapters/build.py`로 재생성합니다.
 
+## 도구 체인
+
+MCP 서버 설정을 리포에 포함해서, 클론한 사람이 같은 도구로 재현할 수 있게
+했습니다. 하네스마다 설정 위치가 달라 두 파일을 유지합니다.
+
+| 파일 | 읽는 하네스 |
+|---|---|
+| `.mcp.json` | Claude Code |
+| `.kiro/settings/mcp.json` | Kiro CLI |
+
+| 서버 | 상태 | 용도 |
+|---|---|---|
+| `aws-knowledge` | 활성 | AWS 공식 문서 조회. 이론 정리의 사실 검증 |
+| `strands-agents` | 활성 | Strands Agents SDK 문서. API가 자주 바뀌어 정적 문서로 대체 불가 |
+| `aws-agentcore` | **비활성** | 도구를 90개 이상 노출해 컨텍스트를 크게 점유합니다. `labs/agentcore-setup`을 작업할 때만 `disabled: false`로 바꿉니다 |
+
+시크릿이 필요한 서버는 값이 아니라 환경변수 참조로 넣습니다.
+
+보안 에이전트가 쓰는 스캐너 설치는
+[`agents/security/docs/setup-sec-tools.md`](./agents/security/docs/setup-sec-tools.md)에 있습니다.
+
 ## 참고
 
 - 각 실습·에이전트 폴더는 독립적으로 실행 가능하도록 자체 `README.md`와

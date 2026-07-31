@@ -14,7 +14,7 @@
     "aws-agentcore": {
       "command": "uvx",
       "args": ["awslabs.amazon-bedrock-agentcore-mcp-server@latest"],
-      "disabled": false
+      "disabled": true
     }
   }
 }
