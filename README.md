@@ -17,7 +17,7 @@ AWS가 제공하는 에이전트를 해체해서, 특정 클라우드 벤더에�
 | 에이전트 | 원본 | 상태 | 내용 |
 |---|---|---|---|
 | [`agents/security/`](./agents/security) | AWS Security Agent | 동작 (테스트 173) | STRIDE 위협 모델링, SAST/SCA/DAST, SARIF 결정론적 CI 게이트. Kiro CLI / Claude Code / Codex CLI 어댑터를 단일 프롬프트에서 생성 |
-| `agents/devops/` | AWS DevOps Agent | 예정 | — |
+| [`agents/devops/`](./agents/devops) | AWS DevOps Agent | 동작 (테스트 64) | IaC·컨테이너·파이프라인 린트. "plan은 되고 apply는 안 된다" — 인프라 상태 변경을 훅으로 거부. 게이트는 `agents/core/`에서 공유 |
 
 계열 공통 설계 원칙과 문서는 [`agents/README.md`](./agents/README.md)에 있습니다.
 
@@ -38,8 +38,9 @@ aws-training/
 ├── agents/                             <- 벤더 독립 에이전트 계열
 │   ├── README.md                       계열 개요·공통 설계 원칙
 │   ├── docs/                           계열 공통 문서 (표준, 포팅 가이드)
-│   ├── core/                           에이전트 간 공유 코드 (2번째 에이전트 이후)
-│   └── security/                       에이전트 하나당 폴더 하나
+│   ├── core/                           에이전트 간 공유 코드 (SARIF 게이트)
+│   ├── security/                       에이전트 하나당 폴더 하나
+│   └── devops/
 │
 ├── generative-ai-essentials/           <- 과정
 │   ├── README.md

@@ -15,7 +15,17 @@ AWS가 만들어 제공하는 에이전트를 해체해서, **특정 클라우�
 | 에이전트 | 원본 | 상태 | 내용 |
 |---|---|---|---|
 | [`security/`](./security) | AWS Security Agent | 동작 (테스트 173) | STRIDE 위협 모델링, SAST/SCA/DAST, SARIF 결정론적 게이트 |
-| `devops/` | AWS DevOps Agent | 예정 | — |
+| [`devops/`](./devops) | AWS DevOps Agent | 동작 (테스트 64, 어댑터 미구현) | IaC·컨테이너·파이프라인 린트, "plan은 되고 apply는 안 된다" 가드 |
+
+## 공유 코드
+
+| 위치 | 내용 | 추출 시점 |
+|---|---|---|
+| [`core/gate/`](./core/gate) | `merge_sarif.py`, `gate.py` — SARIF 병합과 결정론적 판정 | devops가 같은 게이트를 필요로 한 시점. 원칙 3의 "소비자 2개" 충족 |
+
+공유 게이트는 자기 위치로 어느 에이전트를 위해 도는지 알 수 없으므로
+`AGENT_ROOT`로 정체성을 받는다. 이 결함은 추출이 드러냈다 — 옮기기 전에는
+`__file__` 기준으로 리포트 디렉토리와 manifest를 찾고 있었다.
 
 ## 공통 문서
 
@@ -117,13 +127,20 @@ MCP 도구 호출은 쉘 명령이 아니라서 PreToolUse 훅이 보지 못한�
 
 ### Phase 2 착수 조건
 
-DevOps 에이전트의 요구가 드러난 뒤에 아래를 판단한다.
+devops 에이전트가 생겨 `core/gate/`는 추출했다. 남은 후보의 조건은 아래와 같다.
 
 - `adapters/build.py`는 출력 파일명이 하드코딩되어 있다. 공유하려면 manifest의
-  에이전트 이름에서 파생시키는 리팩토링이 필요하다.
-- `gate/`는 SARIF 전용이다. DevOps 에이전트가 SARIF를 쓰는지(IaC 스캔은 쓴다)
-  아니면 다른 형식이 필요한지에 따라 위치가 달라진다.
-- `mcp/server.py`는 골격과 도구 정의를 분리해야 공유할 수 있다.
+  에이전트 이름에서 파생시키는 리팩토링이 필요하다. **devops를 붙이며 추가
+  제약이 드러났다** — `.claude/settings.json`과 `.codex/config.toml`은 프로젝트
+  단위 파일이라 에이전트별로 생성하면 두 에이전트가 서로 덮어쓴다. 생성기가
+  에이전트 단위 출력과 프로젝트 단위 출력을 분리해야 한다.
+- `scanners/_lib.sh`는 devops가 사본을 갖고 있다. 공유하려면 `SEC_REPORT_DIR`을
+  중립 이름으로 개명해야 하고, 그 변수는 5개 파일 8곳에 있다.
+- `guard_scope.sh`의 §1–3(페이로드 파싱·자격증명·구조 금지)도 devops의
+  `guard_infra.sh`에 사본이 있다. 추출이 맞지만 그 파일은 100개 행동 테스트를
+  지고 있어 새 에이전트 추가와 같은 작업에 묶지 않았다.
+- `mcp/server.py`는 골격과 도구 정의를 분리해야 공유할 수 있다. devops는 아직
+  MCP 서버가 없다.
 
 ## 관련
 
