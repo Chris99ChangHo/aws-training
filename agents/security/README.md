@@ -1,5 +1,6 @@
 # Generic Security Agent
 
+[![security gate](https://github.com/Chris99ChangHo/aws-training/actions/workflows/security-gate.yml/badge.svg)](https://github.com/Chris99ChangHo/aws-training/actions/workflows/security-gate.yml)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/runtime_deps-none-brightgreen)
 ![SARIF](https://img.shields.io/badge/SARIF-2.1.0_(OASIS)-informational)
@@ -199,6 +200,34 @@ python3 gate/gate.py --fail-on high   # 판정 (exit 0=통과, 1=차단)
 
 CI에 넣을 부분은 이게 전부다. AI는 결과를 읽고 수정 코드를 제안하는
 편의 기능이고, 없으면 불편할 뿐 못 쓰는 게 아니다.
+
+**실제로 넣어서 돌고 있다.** [`.github/workflows/security-gate.yml`](../../.github/workflows/security-gate.yml)
+— 모델 호출도 API 키도 구독도 없다. 잡 셋으로 갈렸다.
+
+| 잡 | 하는 일 | 차단 |
+|---|---|---|
+| `verify` | 어댑터 드리프트 + 테스트 178개. 스캐너 불필요 | **예** |
+| `gate` | `agents/`를 SAST·SCA 스캔하고 판정 | **예** |
+| `report` | 리포 전체를 스캔하고 보고만 | 아니오 |
+
+`gate`와 `report`를 나눈 것은 실측 근거가 있다. 리포 전체를 `high`/0으로
+게이트하면 5건에서 FAIL하는데, 전부 `labs/agentcore-setup/`의 AgentCore CLI가
+생성한 락파일(`package-lock.json`, `uv.lock`) 의존성 취약점이다. 이 리포가 쓴
+코드가 아니고 여기서 고칠 수도 없다. `agents/` 단독은 0건으로 통과한다.
+
+임계값을 올리거나 `continue-on-error`로 덮지 않았다. 둘 다 게이트를 만든 이유를
+없앤다. **차단 범위를 고칠 수 있는 것으로 한정하고 나머지는 보고해서 부채가
+보이게** 했다.
+
+실행 실측 (run `30636247233`): `verify` 11초, `gate` 43초 `verdict: PASS`,
+`report` 19초 12건 중 high 5건 보고·비차단. **CI가 로컬 실측을 정확히
+재현했다** — 같은 12건, 같은 high 5건, 같은 CVE ID. 다른 머신에서 같은 판정이
+나온 것이 결정론 주장의 실증이다.
+
+스캐너 버전은 고정한다(semgrep 1.172.0, trivy 0.72.0). 게이트가 결정론적이라는
+주장은 도구 버전이 고정되어야 성립한다. nuclei는 CI에서 돌리지 않는다 — 러너에
+스캔할 대상이 없고, `.sec-scope`가 허용하지 않는 호스트를 스캔하는 것은 이
+에이전트가 막으려는 바로 그 행위다.
 
 | 기능 | AI 필요? |
 |---|---|
