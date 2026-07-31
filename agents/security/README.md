@@ -92,17 +92,17 @@ AI는 결과를 읽고 수정 코드를 써주는 편의 기능이다. 없으면
 
 ## 무엇이 벤더에 묶여 있는지
 
-하네스를 아는 코드는 `adapters/build.py`(607줄) **안에만** 있다. 그 안에서
+하네스를 아는 코드는 `adapters/build.py`(657줄) **안에만** 있다. 그 안에서
 두 종류로 갈린다.
 
 | 구간 | 줄 수 | 성격 |
 |---|---|---|
 | 선언적 매핑 — 표 2개(`CAPABILITY_TO_TOOLS` 27, `HOOK_MATCHERS` 5)와 읽는 함수 3개(23) | 55 | 하네스를 늘려도 표에 열 하나가 붙는다 |
-| 하네스별 렌더러 5개 — `build_kiro` 58, `build_claude_agent` 43, `build_claude_settings` 31, `build_codex_config` 92, `build_codex_prompt` 38 | 262 | 설정 파일 형식이 하네스마다 다르므로 통째로 특화 |
-| **합계** | **317** | 전체 3,966줄의 **8.0%** |
+| 하네스별 렌더러 6개 — `build_kiro` 58, `build_claude_agent` 43, `build_claude_settings` 31, `build_claude_session_guard` 44, `build_codex_config` 92, `build_codex_prompt` 38 | 306 | 설정 파일 형식이 하네스마다 다르므로 통째로 특화 |
+| **합계** | **361** | 전체 4,213줄의 **8.6%** |
 
-나머지 3,359줄(프롬프트 111, manifest 88, 스캐너 918, 게이트 576,
-MCP 452, 테스트 1,214)은 어떤 하네스도 모른다.
+나머지 3,852줄(프롬프트 111, manifest 88, 스캐너 sh 937, 스캐너 py 95,
+게이트 576, MCP 452, 테스트 1,297)은 어떤 하네스도 모른다.
 
 숫자는 `ast`로 노드 범위를 세어 산출했다. 정의를 적어두는 이유는, 정의 없는
 비율은 검증할 수 없고 유리한 쪽으로 흐르기 때문이다. 실제로 이 문서의 이전
@@ -121,13 +121,14 @@ MCP 452, 테스트 1,214)은 어떤 하네스도 모른다.
 |---|---|---|
 | 시스템 프롬프트 (`agent/SYSTEM_PROMPT.md`) | 111 | 없음 (마크다운) |
 | 중립 manifest (`agent/manifest.toml`) | 88 | 모델 ID 3줄만 |
-| 스캐너 + 가드 (`scanners/` 7개 파일) | 918 | 없음 (POSIX sh) |
+| 스캐너 + 가드 (`scanners/` sh 7개) | 937 | 없음 (POSIX sh) |
+| SARIF 정규화 (`scanners/normalize_sarif.py`) | 95 | 없음 (stdlib Python) |
 | SARIF 게이트 (`gate/` 2개 파일) | 576 | 없음 (stdlib Python) |
 | MCP 서버 (`mcp/server.py`) | 452 | 없음 (개방 프로토콜) |
-| 테스트 (`tests/` 4개 파일) | 1,214 | 없음 |
-| **어댑터 생성기 (`adapters/build.py`)** | **607** | **그중 317줄** |
+| 테스트 (`tests/` 4개 파일) | 1,297 | 없음 |
+| **어댑터 생성기 (`adapters/build.py`)** | **657** | **그중 361줄** |
 
-전체 3,966줄 중 하네스 종속은 **8.0%**다. 분자의 정의는 바로 위 표에 있다.
+전체 4,213줄 중 하네스 종속은 **8.6%**다. 분자의 정의는 바로 위 표에 있다.
 
 지원 하네스: **Kiro CLI, Claude Code, Codex CLI**. 네 번째를 추가하는 절차는
 [포팅 가이드](../docs/porting-to-other-harnesses.md)에 있다.
@@ -951,13 +952,15 @@ anchor(f"{LAB_REL}/{p}") if "/" in p else anchor(p)
 §13에서 "README 수치를 부풀렸다"고 지적받고 전부 실측값으로 정정했다. 그런데
 이번 점검에서 **유리한 방향의 오류**가 남아 있는 게 드러났다.
 
-헤드라인 주장이 "전체 3,966줄 중 하네스 종속 **1.4%**"였다. 분자로 센 것은
+헤드라인 주장이 "하네스 종속 **1.4%**"였다(분모는 당시 3,966줄). 분자로 센 것은
 선언적 매핑 55줄(표 2개 + 읽는 함수 3개)뿐이었다. 그런데 하네스별 렌더러
 5개(`build_kiro` 58, `build_claude_agent` 43, `build_claude_settings` 31,
 `build_codex_config` 92, `build_codex_prompt` 38 = 262줄)도 하네스 종속이다.
 설정 파일 형식이 하네스마다 다르므로 통째로 특화 코드다.
 
-실제 값은 317줄, **8.0%**다. 5.7배 낮게 적혀 있었다.
+당시 실제 값은 317줄, **8.0%**였다. 5.7배 낮게 적혀 있었다. (현재 값은 위
+"무엇이 벤더에 묶여 있는지" 절을 본다 — 이 절에 현재 수치를 적으면 코드가
+바뀔 때마다 과거 서술이 다시 어긋난다.)
 
 §13의 오류(줄 수를 낮게, 차단 케이스를 높게)는 방향이 섞여 있어서 "부주의"로
 설명된다. 이건 다르다. **분자를 좁게 정의하면 프로젝트가 더 좋아 보인다.**
@@ -968,7 +971,7 @@ anchor(f"{LAB_REL}/{p}") if "/" in p else anchor(p)
 1. **비율을 적을 때 분자·분모의 정의를 같은 자리에 적는다.** 정의 없는 비율은
    검증할 수 없고, 검증할 수 없으면 유리한 쪽으로 흐른다.
 2. **분류 축을 섞지 않는다.** `adapters/build.py`는 도메인 축에서는 완전
-   범용(DevOps 에이전트도 어댑터가 필요하다)이고 하네스 축에서는 317줄이
+   범용(어떤 에이전트든 어댑터가 필요하다)이고 하네스 축에서는 대부분이
    종속이다. 한쪽 축의 "범용"을 다른 축에 옮겨 쓰면 위와 같은 결론이 나온다.
    `agents/README.md`의 이음새 표에 두 축이 직교한다고 명시해뒀다.
 
@@ -1194,7 +1197,6 @@ verdict : FAIL
 | Kiro `preToolUse` 훅 페이로드 스키마 | 공식 문서에 미명시. fail-closed로 대응 |
 | Kiro `preToolUse` matcher의 정규식 지원 | 미명시. 이름마다 훅을 하나씩 등록해 회피 |
 | `.codex/config.toml` 실제 적용 | `codex` CLI 미설치 |
-| Trivy `image` 모드 | Docker 미설치. 레지스트리 이미지 참조는 이론상 가능하나 미실행 |
 
 해소된 항목:
 
@@ -1206,6 +1208,7 @@ verdict : FAIL
 | **`trivy --scanners vuln,secret,misconfig`** | **실행 확인** |
 | **파이프라인 종단 (스캔 → 병합 → 게이트)** | **실데이터로 확인, exit 1** |
 | **Claude Code 어댑터 실행** | **실행 확인 — 에이전트 로드, frontmatter 훅 발동·차단, 메인 세션은 비제약, MCP 도구 호출까지** |
+| **Trivy `image` 모드** | **실행 확인 — Docker 없이 레지스트리에서 직접 당긴다. `alpine:3.10`에서 CVE-2021-36159(critical) 탐지, 게이트 FAIL exit 1** |
 | **`nuclei -sarif-export`** | **실행 확인 — v3.11.0, 템플릿 13,391개. 다만 완료된 스캔에도 `executionSuccessful: false`를 쓴다(§23)** |
 | Codex 훅 차단 계약 | Codex 공식 문서로 확인 — exit 2 + stderr (§16) |
 
