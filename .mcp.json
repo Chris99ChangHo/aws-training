@@ -3,9 +3,18 @@
     "Claude Code용 워크스페이스 MCP 설정. Kiro CLI는 .kiro/settings/mcp.json을 읽는다.",
     "두 파일을 함께 유지하는 이유: 하네스마다 설정 위치가 달라서, 한쪽만 두면",
     "다른 하네스에서 도구가 하나도 안 보인다. 실측으로 겪은 문제다.",
-    "aws-agentcore는 기본 비활성이다. 도구 90개 이상을 노출해서 매 턴 컨텍스트를",
-    "크게 점유하는데, labs/agentcore-setup 하나에만 필요하다. 그 랩을 작업할 때",
-    "disabled를 false로 바꾼다.",
+    "",
+    "aws-agentcore가 여기 없는 것은 의도다. Claude Code는 .mcp.json의 disabled",
+    "필드를 지원하지 않는다(anthropics/claude-code#17921은 아직 기능 요청이고",
+    "#33958은 disabled가 무시된다는 버그 보고다). 그 서버는 도구를 90개 이상",
+    "노출하는데 labs/agentcore-setup 하나에만 필요하므로, 목록에서 빼는 것이",
+    "유일한 off 수단이다. 그 랩을 작업할 때만 아래 명령으로 붙인다:",
+    "",
+    "  claude mcp add aws-agentcore -- uvx awslabs.amazon-bedrock-agentcore-mcp-server@latest",
+    "",
+    "Kiro CLI 쪽은 disabled를 지원하므로 .kiro/settings/mcp.json에는 항목을 남기고",
+    "disabled: true로 둔다.",
+    "",
     "시크릿이 필요한 서버는 여기 넣지 않는다. 값이 아니라 환경변수 참조로 넣는다."
   ],
   "mcpServers": {
@@ -16,11 +25,6 @@
     "strands-agents": {
       "command": "uvx",
       "args": ["--with", "mcp<2.0", "strands-agents-mcp-server"]
-    },
-    "aws-agentcore": {
-      "command": "uvx",
-      "args": ["awslabs.amazon-bedrock-agentcore-mcp-server@latest"],
-      "disabled": true
     }
   }
 }
