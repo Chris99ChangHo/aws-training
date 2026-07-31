@@ -1,37 +1,11 @@
 {
   "$generated": "GENERATED FILE - do not edit. Source: agents/security/agent/(SYSTEM_PROMPT.md + manifest.toml). Regenerate with python3 agents/security/adapters/build.py",
+  "$note": "Agent-neutral settings only. The security guard lives in .claude/agents/generic-sec-agent.md frontmatter and fires when the agent is spawned. To put a whole main session under the guard, copy .claude/settings.local.json.example to .claude/settings.local.json; delete it to turn the guard off.",
   "permissions": {
     "allow": [
       "Read",
       "Grep",
       "Glob"
-    ],
-    "deny": [
-      "WebFetch",
-      "WebSearch"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh agents/security/scanners/guard_scope.sh"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh agents/security/scanners/preflight.sh"
-          }
-        ]
-      }
     ]
   }
 }

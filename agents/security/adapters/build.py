@@ -42,6 +42,9 @@ CLAUDE_SETTINGS_OUT = WORKSPACE_ROOT / ".claude" / "settings.json"
 CLAUDE_SETTINGS_FRAGMENT = (
     WORKSPACE_ROOT / ".claude" / "settings.generic-sec-agent.json"
 )
+CLAUDE_SESSION_GUARD_OUT = (
+    WORKSPACE_ROOT / ".claude" / "settings.local.json.example"
+)
 CODEX_CONFIG_OUT = WORKSPACE_ROOT / ".codex" / "config.toml"
 CODEX_CONFIG_FRAGMENT = WORKSPACE_ROOT / ".codex" / "config.generic-sec-agent.toml"
 CODEX_PROMPT_OUT = WORKSPACE_ROOT / ".codex" / "generic-sec-agent.md"
@@ -298,14 +301,60 @@ def build_claude_agent(manifest: dict[str, Any], prompt: str) -> str:
 
 
 def build_claude_settings(manifest: dict[str, Any]) -> str:
-    """Render the Claude Code settings fragment as JSON text."""
+    """Render the project-wide Claude Code settings.
+
+    Deliberately carries no hooks. `.claude/settings.json` applies to *every*
+    session in the project, so putting the guard here forces general work
+    (writing docs, unrelated code) through a security agent's policy — web
+    search denied, no command chaining, no interpreters. The guard belongs to
+    the agent, not the project.
+
+    The subagent's own frontmatter already carries the same hooks, and those
+    fire when the agent is spawned through the Agent tool or an @-mention.
+    That is the on/off switch: spawn the agent, get the guard.
+
+    Caveat: frontmatter hooks do not fire when the agent runs as the *main*
+    session (`claude --agent generic-sec-agent`). For that path the operator
+    copies the fragment written to `.claude/settings.local.json.example`.
+    """
+    settings: dict[str, Any] = {
+        "$generated": GENERATED_NOTE,
+        "$note": (
+            "Agent-neutral settings only. The security guard lives in "
+            ".claude/agents/generic-sec-agent.md frontmatter and fires when "
+            "the agent is spawned. To put a whole main session under the "
+            "guard, copy .claude/settings.local.json.example to "
+            ".claude/settings.local.json; delete it to turn the guard off."
+        ),
+        "permissions": {
+            "allow": auto_approved_for(manifest, "claude_code"),
+        },
+    }
+    return json.dumps(settings, indent=2, ensure_ascii=False) + "\n"
+
+
+def build_claude_session_guard(manifest: dict[str, Any]) -> str:
+    """Render the opt-in session-wide guard for Claude Code.
+
+    Written as `.claude/settings.local.json.example`. The operator copies it to
+    `.claude/settings.local.json` (gitignored) to run an entire main session
+    under the guard, and deletes that copy to go back to unrestricted work.
+    A file is the switch because a human has to move it — the agent cannot
+    silently disable its own enforcement, since `rm` is blocked by the guard
+    it would be removing.
+    """
     hooks_cfg = manifest["hooks"]
     guard = f"sh {LAB_REL}/{hooks_cfg['pre_tool_use']}"
 
     settings: dict[str, Any] = {
         "$generated": GENERATED_NOTE,
+        "$note": (
+            "Copy to .claude/settings.local.json to put every session in this "
+            "project under the security guard. Delete that copy to turn it "
+            "off. Not needed when the agent is spawned as a subagent — its "
+            "frontmatter carries the same hooks."
+        ),
         "permissions": {
-            "allow": auto_approved_for(manifest, "claude_code"),
             "deny": denied_tools_for(manifest, "claude_code"),
         },
         "hooks": {
@@ -499,6 +548,7 @@ def targets(manifest: dict[str, Any], prompt: str) -> list[tuple[Path, str]]:
             _generated_target(CLAUDE_SETTINGS_OUT, CLAUDE_SETTINGS_FRAGMENT),
             build_claude_settings(manifest),
         ),
+        (CLAUDE_SESSION_GUARD_OUT, build_claude_session_guard(manifest)),
         (
             _generated_target(CODEX_CONFIG_OUT, CODEX_CONFIG_FRAGMENT),
             build_codex_config(manifest),

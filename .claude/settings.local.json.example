@@ -1,0 +1,33 @@
+{
+  "$generated": "GENERATED FILE - do not edit. Source: agents/security/agent/(SYSTEM_PROMPT.md + manifest.toml). Regenerate with python3 agents/security/adapters/build.py",
+  "$note": "Copy to .claude/settings.local.json to put every session in this project under the security guard. Delete that copy to turn it off. Not needed when the agent is spawned as a subagent — its frontmatter carries the same hooks.",
+  "permissions": {
+    "deny": [
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh agents/security/scanners/guard_scope.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh agents/security/scanners/preflight.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -232,6 +232,39 @@ Kiro에서는 `/agent swap generic-sec-agent`도 동작한다. `swap` 키워드�
 **Codex는 한 단계가 더 필요하다.** 훅을 처음 쓸 때 `/hooks`로 검토·신뢰해야
 한다. 이걸 빼먹으면 **가드가 설정만 되고 실행되지 않는다.**
 
+### 가드를 켜고 끄기 (Claude Code)
+
+가드는 이 에이전트의 정책이고 프로젝트의 정책이 아니다. 일반 개발을 하는
+세션까지 웹 검색 차단·인터프리터 차단·체이닝 차단에 걸리면 도구가 아니라
+방해물이 된다. 그래서 **하네스마다 가드의 유효 범위를 에이전트 단위로 맞췄다.**
+
+| 하네스 | 가드가 사는 곳 | 켜지는 시점 |
+|---|---|---|
+| Kiro CLI | `.kiro/agents/generic-sec-agent.json` | `/agent generic-sec-agent`로 바꿀 때 |
+| Claude Code | `.claude/agents/generic-sec-agent.md` frontmatter | 에이전트를 **스폰**할 때 (Agent 도구 또는 `@generic-sec-agent`) |
+| Codex CLI | `.codex/config.toml` | `/hooks`로 신뢰한 뒤 |
+
+`.claude/settings.json`에는 훅을 넣지 않는다. 그 파일은 **프로젝트 전역**이라
+모든 세션에 걸리고, 끌 방법이 파일을 편집하는 것뿐이다. 처음에는 여기에
+훅을 넣었고 그 결과 일반 작업 세션이 전부 보안 정책 아래 들어갔다.
+
+세션 **전체**를 보안 모드로 돌려야 할 때만 스위치를 켠다.
+
+```bash
+cp .claude/settings.local.json.example .claude/settings.local.json   # 켜기
+rm .claude/settings.local.json                                       # 끄기
+```
+
+파일을 스위치로 삼은 이유는 **사람만 끌 수 있어야** 하기 때문이다. 에이전트는
+가드가 켜진 상태에서 `rm`이 차단되므로 자기 강제 장치를 스스로 지울 수 없다.
+`.claude/settings.local.json`은 `.gitignore` 대상이라 개인 선택이 커밋되지
+않고, `.example`만 리포에 남는다.
+
+**주의**: frontmatter 훅은 에이전트를 서브에이전트로 스폰할 때 발동하고,
+`claude --agent generic-sec-agent`처럼 **메인 세션**으로 띄울 때는 발동하지
+않는다([anthropics/claude-code#51372](https://github.com/anthropics/claude-code/issues/51372)).
+메인 세션으로 보안 작업을 할 거라면 위 스위치를 켜야 가드가 산다.
+
 ### 스캐너 없이 검증
 
 스캐너가 하나도 설치되지 않은 상태에서도 통제 로직 전체가 검증된다.
@@ -241,9 +274,10 @@ Kiro에서는 `/agent swap generic-sec-agent`도 동작한다. `swap` 키워드�
 cd agents/security
 
 sh      scanners/preflight.sh       # 도구 설치 상태
-sh      tests/test_guard_scope.sh   # 훅 차단 로직 91 케이스
+sh      tests/test_guard_scope.sh   # 훅 차단 로직 100 케이스
 python3 tests/test_gate.py          # 병합 + 게이트 + 무결성 34 케이스
-python3 tests/test_mcp_server.py    # MCP 프로토콜 + 인자 검증 19 케이스
+python3 tests/test_mcp_server.py    # MCP 프로토콜 + 인자 검증 20 케이스
+python3 tests/test_adapters.py      # 생성물의 성질 19 케이스
 ```
 
 ### 스캔과 게이팅
