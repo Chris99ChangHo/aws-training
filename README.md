@@ -27,7 +27,7 @@ AWS가 제공하는 에이전트를 해체해서, 특정 클라우드 벤더에�
 | Generative AI Essentials on AWS | [`generative-ai-essentials/`](./generative-ai-essentials) | Bedrock Knowledge Base, RAG, 검색 품질 튜닝 |
 | Security Engineering on AWS | [`security-engineering/`](./security-engineering) | (실습은 `agents/security/`로 분리) |
 | Developing Generative AI Applications on AWS | [`developing-genai-apps/`](./developing-genai-apps) | Strands Agents, MCP, Streamlit 챗봇 |
-| DevOps Engineering on AWS | [`devops-engineering/`](./devops-engineering) | (진행 예정) |
+| DevOps Engineering on AWS | [`devops-engineering/`](./devops-engineering) | CI/CD, IaC, CodeBuild·CodeDeploy, SAM (이론 정리만, 실습 진행 예정) |
 | (과정 외) 기능 단위 랩 | [`labs/`](./labs) | InvokeModel, Strands 기초, MCP 트랜스포트, AgentCore Runtime |
 
 ## 구조
