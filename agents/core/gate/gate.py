@@ -182,6 +182,17 @@ def severity_of(result: dict[str, Any], rules: dict[str, dict[str, Any]]) -> str
     return "medium"
 
 
+def agent_label() -> str:
+    """Return a display name for the agent this run belongs to.
+
+    Taken from the agent's folder name, which is the one identifier that is
+    always present and already required to be a single domain word
+    (agent-conventions rule 7). The manifest's `agent.name` is the adapter
+    identity ("generic-sec-agent") and reads badly as a heading.
+    """
+    return AGENT_ROOT.name.capitalize() or "Deterministic"
+
+
 def load_manifest_defaults() -> tuple[str, int]:
     """Read the gate threshold from the neutral manifest.
 
@@ -327,8 +338,12 @@ def render(
     blocking: int,
 ) -> None:
     """Print the human-readable verdict."""
-    print("Security gate")
-    print("-------------")
+    # The gate is shared, so the heading names the agent it ran for rather than
+    # hardcoding "Security". A wrong label on a build verdict is a real cost:
+    # it sends someone reading CI output to the wrong owner.
+    title = f"{agent_label()} gate"
+    print(title)
+    print("-" * len(title))
     print(f"threshold   : {fail_on} or above")
     print(f"budget      : {max_allowed}")
     print()
