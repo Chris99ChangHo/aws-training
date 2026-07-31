@@ -1,0 +1,180 @@
+# 벤더 독립 보안 에이전트의 결정론적 게이트를 CI에서 돌린다.
+#
+# 이 워크플로가 존재하는 이유: Tier 3(결정론적 게이트)의 목적이 "LLM 없이
+# CI에서 돈다"인데, 워크플로가 없으면 사람이 기억해서 돌리는 구조가 된다.
+# 게이트가 아무리 결정론적이어도 아무도 호출하지 않으면 게이트가 아니다.
+#
+# **이 워크플로에는 AI가 개입하지 않는다.** 모델 호출도, API 키도, 구독도
+# 필요 없다. 스캐너와 stdlib Python만 쓴다. 그것이 이 설계의 요점이다.
+#
+# 잡이 셋으로 갈린 이유:
+#
+#   verify  스캐너 없이 도는 것 — 어댑터 드리프트와 테스트. 가장 빠르고,
+#           나머지 잡이 의미를 갖기 위한 전제다. 생성물이 소스와 어긋나 있으면
+#           스캔 결과를 논할 단계가 아니다.
+#   gate    산출물(agents/)을 스캔하고 판정한다. **차단한다.**
+#   report  리포 전체를 스캔하고 보고만 한다. **차단하지 않는다.**
+#
+# gate와 report를 나눈 것은 실측에 근거한다. 리포 전체를 high/0으로 게이트하면
+# 5건에서 FAIL한다. 전부 labs/agentcore-setup/ 아래 AgentCore CLI가 생성한
+# 락파일(package-lock.json, uv.lock)의 의존성 취약점이고, 이 리포가 작성한
+# 코드가 아니며 여기서 고칠 수도 없다. agents/ 단독은 0건으로 통과한다.
+#
+# 그래서 임계값을 올리거나 continue-on-error로 덮지 않았다. 둘 다 게이트를
+# 만든 이유를 없앤다. 대신 **차단하는 범위를 고칠 수 있는 것으로 한정하고,
+# 나머지는 보고해서 부채가 보이게** 했다. 학습용 랩의 생성 스캐폴딩이
+# 산출물의 게이트를 무력화하지 않게 하는 것이 목적이다.
+#
+# nuclei(DAST)는 여기서 돌리지 않는다. 러너에 스캔할 대상이 없고, .sec-scope가
+# 허용하지 않는 호스트를 스캔하는 것은 이 에이전트가 막으려는 바로 그 행위다.
+# DAST는 사람이 대상을 띄우고 권한을 확인한 뒤 로컬에서 돈다.
+
+name: security gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # 버전을 고정한다. 스캐너가 바뀌면 판정이 바뀌므로, 게이트가 결정론적이라는
+  # 주장은 도구 버전이 고정되어야 성립한다.
+  SEMGREP_VERSION: "1.172.0"
+  TRIVY_VERSION: "0.72.0"
+
+jobs:
+  verify:
+    name: adapters and tests (no scanners)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: jq present
+        # 가드는 하네스 페이로드를 jq로 파싱한다. 없으면 fail-closed로 모든
+        # 명령을 차단하므로, 테스트 결과를 해석하기 전에 전제를 확인한다.
+        run: jq --version
+
+      - name: adapter drift
+        # 생성물이 중립 소스와 일치하는가. 어댑터를 손으로 고쳤으면 여기서 잡힌다.
+        run: python3 agents/security/adapters/build.py --check
+
+      - name: guard blocking logic (100 cases)
+        run: sh agents/security/tests/test_guard_scope.sh
+
+      - name: gate and SARIF normalisation (39 cases)
+        run: python3 agents/security/tests/test_gate.py
+
+      - name: MCP server protocol (20 cases)
+        run: python3 agents/security/tests/test_mcp_server.py
+
+      - name: generated adapter properties (19 cases)
+        # 드리프트 검사가 잡지 못하는 것을 잡는다 — 허용 규칙이 앵커링돼
+        # 있는가, 규칙의 리터럴 경로가 디스크에 실존하는가.
+        run: python3 agents/security/tests/test_adapters.py
+
+  gate:
+    name: scan agents/ and gate (blocking)
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install semgrep
+        run: pip install --no-cache-dir "semgrep==${SEMGREP_VERSION}"
+
+      - name: install trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
+          trivy --version
+
+      - name: preflight
+        # 어떤 스캐너가 있는지 로그에 남긴다. 없는 도구를 "깨끗함"으로
+        # 보고하지 않기 위해 종료 코드 3이 존재하는데, 그 전제를 눈으로 본다.
+        working-directory: agents/security
+        run: sh scanners/preflight.sh
+
+      - name: SAST
+        working-directory: agents/security
+        run: sh scanners/run_sast.sh ..
+
+      - name: SCA
+        working-directory: agents/security
+        run: sh scanners/run_sca.sh ..
+
+      - name: merge SARIF
+        working-directory: agents/security
+        run: python3 gate/merge_sarif.py
+
+      - name: gate
+        # exit 0 통과 / 1 차단 / 4 리포트를 읽을 수 없음(통과 아님).
+        # 임계값과 예산의 기본값은 agent/manifest.toml에서 온다.
+        working-directory: agents/security
+        run: python3 gate/gate.py --fail-on high --max-allowed 0
+
+      - name: upload SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sarif-agents
+          path: agents/security/reports/*.sarif
+          if-no-files-found: error
+
+  report:
+    name: scan whole repo (report only)
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
+
+      - name: SCA over the whole repository
+        # 리포트를 산출물 스캔과 섞지 않는다. 같은 디렉토리에 쓰면 어느 범위의
+        # 결과인지 구분할 수 없다.
+        working-directory: agents/security
+        env:
+          SEC_REPORT_DIR: ${{ runner.temp }}/repo-reports
+        run: sh scanners/run_sca.sh ../..
+
+      - name: report findings without blocking
+        working-directory: agents/security
+        env:
+          SEC_REPORT_DIR: ${{ runner.temp }}/repo-reports
+        run: |
+          python3 gate/merge_sarif.py
+          # 이 잡은 부채를 보이게 하는 것이 목적이므로 종료 코드로 빌드를
+          # 막지 않는다. 무엇이 왜 남아 있는지는 워크플로 상단 주석에 있다.
+          if python3 gate/gate.py --fail-on high --max-allowed 0; then
+            echo "리포 전체가 임계값을 통과했습니다."
+          else
+            echo "임계값 초과 발견이 있습니다 (보고만 하고 차단하지 않습니다)."
+            echo "대부분 labs/agentcore-setup/의 생성된 락파일입니다."
+          fi
+
+      - name: upload SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sarif-repo
+          path: ${{ runner.temp }}/repo-reports/*.sarif
+          if-no-files-found: error
