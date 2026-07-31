@@ -14,7 +14,7 @@ AWS가 만들어 제공하는 에이전트를 해체해서, **특정 클라우�
 
 | 에이전트 | 원본 | 상태 | 내용 |
 |---|---|---|---|
-| [`security/`](./security) | AWS Security Agent | 동작 (테스트 173) | STRIDE 위협 모델링, SAST/SCA/DAST, SARIF 결정론적 게이트 |
+| [`security/`](./security) | AWS Security Agent | 동작 (테스트 178, CI 활성) | STRIDE 위협 모델링, SAST/SCA/DAST, SARIF 결정론적 게이트. 게이트가 [CI에서 실제로 돈다](../.github/workflows/security-gate.yml) |
 
 ## 폐기한 시도 — DevOps 에이전트
 

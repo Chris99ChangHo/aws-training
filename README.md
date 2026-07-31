@@ -16,7 +16,7 @@ AWS가 제공하는 에이전트를 해체해서, 특정 클라우드 벤더에�
 
 | 에이전트 | 원본 | 상태 | 내용 |
 |---|---|---|---|
-| [`agents/security/`](./agents/security) | AWS Security Agent | 동작 (테스트 173) | STRIDE 위협 모델링, SAST/SCA/DAST, SARIF 결정론적 CI 게이트. Kiro CLI / Claude Code / Codex CLI 어댑터를 단일 프롬프트에서 생성 |
+| [`agents/security/`](./agents/security) | AWS Security Agent | 동작 (테스트 178, CI 활성) | STRIDE 위협 모델링, SAST/SCA/DAST, SARIF 결정론적 게이트가 [GitHub Actions에서 실행](./.github/workflows/security-gate.yml) — 모델 호출 없음. Kiro CLI / Claude Code / Codex CLI 어댑터를 단일 프롬프트에서 생성 |
 
 계열 공통 설계 원칙과 문서는 [`agents/README.md`](./agents/README.md)에 있습니다.
 
