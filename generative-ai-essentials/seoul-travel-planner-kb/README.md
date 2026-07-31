@@ -224,15 +224,43 @@ aws configure   # 또는 SSO 임시 자격 증명 설정
 자동 동기화 파이프라인 검증: S3에 신규 문서 업로드 → Lambda가 자동으로
 `start_ingestion_job` 실행 → 약 45초 내 벡터 검색에 반영 확인.
 
+## 비용
+
+**이 실습은 상시 과금되는 리소스를 만듭니다.** 끝나면 정리하세요.
+
+| 리소스 | 과금 방식 |
+|---|---|
+| OpenSearch Serverless 컬렉션 | OCU 시간당 + 스토리지 GB-월. **이 실습에서 가장 큰 비용** |
+| Bedrock Knowledge Base | KB 자체는 무료. 임베딩 호출과 검색 시 모델 호출분 |
+| S3 버킷 | 저장 용량 |
+| Lambda (동기화) | 호출 횟수 (S3 이벤트 발생 시에만) |
+
+OpenSearch Serverless의 과금 구조는 컬렉션 종류에 따라 다릅니다. AWS 문서
+기준으로 **Classic 컬렉션은 계정의 첫 컬렉션에 대해 최소 2 OCU가 과금되고,
+NextGen 컬렉션은 10분간 활동이 없으면 OCU가 0으로 내려갑니다.**
+`setup_02_create_kb.py`는 `type="VECTORSEARCH"`만 지정하고 종류를 명시하지
+않으므로, **콘솔에서 실제로 어느 쪽이 생성됐는지 확인하세요.** Classic이면
+쓰지 않아도 과금이 계속됩니다.
+
+출처: [OpenSearch Service 요금](https://aws.amazon.com/opensearch-service/pricing/).
+현재 단가는 이 문서에 적지 않습니다 — 적어두면 낡습니다.
+
+### 정리
+
+```bash
+python3 cleanup.py            # 삭제 대상만 출력 (기본값, 아무것도 지우지 않음)
+python3 cleanup.py --delete   # 실제 삭제
+```
+
+`kb_info.json`에 기록된 리소스만 지웁니다. 그 파일이 없으면 아무것도 하지
+않습니다 — 이름을 추측해서 지우면 다른 리소스를 건드릴 수 있습니다.
+
 ## 참고 사항
 
 - **자격 증명**: 이 리포지토리에는 AWS 자격 증명, 계정 ID, 리소스 ID가
   포함되어 있지 않습니다. `aws configure` 또는 SSO로 로컬에 설정해서
   사용하세요. `kb_info.json`(계정별 KB ID·버킷명)은 `.gitignore`로
   제외되어 있으며, 실행 시 자동으로 생성됩니다.
-- **비용**: OpenSearch Serverless 벡터 컬렉션은 최소 OCU가 상시
-  과금됩니다. 실습이 끝나면 콘솔 또는 CLI로 컬렉션·KB·Lambda를
-  삭제하는 것을 권장합니다.
 - **리랭킹**: Cohere Rerank는 AWS Marketplace 서드파티 모델이라 계정
   정책에 따라 `aws-marketplace:Subscribe` 권한이 필요합니다. 막힐 경우
   `03_rerank_search.py`가 자동으로 LLM 기반 리랭커로 대체합니다.
