@@ -1,6 +1,6 @@
 # Bedrock InvokeModel — 제공자별 네이티브 포맷과 미디어 생성
 
-![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logo=amazonaws&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.14-blue?logo=python&logoColor=white)
 ![boto3](https://img.shields.io/badge/boto3-1.43-232F3E?logo=amazonaws&logoColor=white)
 ![Meta Llama](https://img.shields.io/badge/Meta-Llama_4_Scout-0467DF?logo=meta&logoColor=white)
@@ -83,6 +83,30 @@ python generate_video.py    # Nova Reel, 기본 us-east-1
 
 ## 설계 결정
 
+이 실습은 Kiro CLI(모델: claude-opus-5)와 함께 진행했습니다. 아래 내용은
+AI 에이전트가 실행한 도구 결과(에러 메시지, 리전별 모델 카탈로그 조회)를
+근거로 정리했으며, 어떤 해결 방향을 택할지는 사람이 검토·승인했습니다.
+
+**리전 원인 규명** — `generate_image.py`·`generate_video.py`가
+`us-west-2`에서 아래 오류로 실패했습니다.
+
+```
+botocore.errorfactory.ValidationException: An error occurred
+(ValidationException) when calling the InvokeModel operation:
+The provided model identifier is invalid.
+```
+
+모델 액세스 미승인처럼 보이지만 아니었습니다. Kiro가
+`bedrock list-foundation-models`로 리전별 카탈로그를 조회한 결과:
+
+| 리전 | Canvas / Reel |
+|---|---|
+| `us-west-2` | 없음 (nova-pro/lite/micro/premier/sonic — 텍스트·음성만) |
+| `us-east-1` | `amazon.nova-canvas-v1:0`, `amazon.nova-reel-v1:0`, `amazon.nova-reel-v1:1` (전부 ON_DEMAND) |
+
+Bedrock은 해당 리전 카탈로그에 없는 `modelId`를 "그 리전에 없다"가 아니라
+"식별자가 유효하지 않다"로 응답합니다. 그래서 권한 문제로 오인하기 쉽습니다.
+
 **계정 ID를 코드에 박지 않음** — 버킷 기본 이름에 계정 ID가 필요하지만,
 `sts:GetCallerIdentity`로 런타임에 조회합니다. 공개 리포에 계정 ID가
 노출되지 않고, 다른 계정에서도 그대로 실행됩니다.
@@ -95,6 +119,19 @@ python generate_video.py    # Nova Reel, 기본 us-east-1
 **파일 저장 경로를 스크립트 기준으로** — `generate_image.py`의 출력은
 `Path(__file__).parent`를 기준으로 씁니다. 상대 경로로 두면 리포 루트에서
 실행할 때 엉뚱한 위치에 저장됩니다.
+
+## 검증 상태
+
+| 항목 | 상태 |
+|---|---|
+| `us-west-2`에 Canvas/Reel 부재 | 확인 (`list-foundation-models` 조회) |
+| `us-east-1`에 Canvas/Reel 존재 | 확인 (동일 조회) |
+| 리전 수정 후 이미지·비디오 실제 생성 | **미검증** |
+
+미검증인 이유: 리전 원인을 특정한 직후 워크숍 계정 자격 증명이 폐기됐습니다.
+세션 만료(`ExpiredTokenException`)가 아니라 액세스 키 자체가 무효화된
+상태(`UnrecognizedClientException`)여서 재로그인으로도 복구되지 않습니다.
+새 워크숍 계정을 받은 뒤 실행 검증을 이어갈 예정입니다.
 
 ## 비용 주의사항
 

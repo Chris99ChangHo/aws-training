@@ -15,6 +15,10 @@ credentials.json
 # Lambda 배포 산출물
 **/lambda/*.zip
 
+# Nova Canvas·Reel 미디어 생성 산출물
+generated_image.png
+*.mp4
+
 # 계정 ID, KB ID, 버킷명 등 계정별 값이 포함된 산출물
 **/kb_info.json
 

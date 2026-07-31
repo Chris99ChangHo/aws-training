@@ -1,6 +1,6 @@
 # 강남 다이닝 컨시어지
 
-![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logo=amazonaws&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
 ![Strands Agents](https://img.shields.io/badge/Strands_Agents-1.48-4B32C3)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.51-FF4B4B?logo=streamlit&logoColor=white)
@@ -62,6 +62,10 @@ inspect_reviews.py ──ClientSession──▶ list_tools()로 도구 스키마
   르 비스트로, 매콤한 마라)이 `review_server.py`에 내장
 
 ## 설계 결정과 트러블슈팅
+
+이 실습은 Kiro CLI(모델: claude-opus-5)와 함께 진행했습니다. 아래
+트러블슈팅은 AI 에이전트가 실행한 도구 결과(로그·에러 메시지)를 근거로
+정리했으며, 어떤 해결 방향을 택할지는 사람이 검토·승인한 내용입니다.
 
 ### 리뷰 MCP 서버를 통합 앱에 넣지 않은 이유
 

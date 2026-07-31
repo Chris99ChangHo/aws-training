@@ -51,6 +51,10 @@ streamlit run 07_chat_app.py      # 챗봇만 별도 실행
 
 ## 설계 결정
 
+이 실습은 Kiro CLI(모델: claude-opus-5)와 함께 진행했습니다. 아래 내용은
+AI 에이전트가 실행한 도구 결과를 근거로 정리했으며, 판단은 사람이
+검토·승인했습니다.
+
 **`callback_handler=None`을 왜 넣었는지** — Strands 기본 콜백은 토큰을
 스트리밍으로 즉시 출력합니다. 그대로 두면 스트리밍 출력과 마지막
 `print(response)`가 중복돼 같은 답변이 두 번 보입니다. 콜백을 끄고
