@@ -1,0 +1,17 @@
+# DevOps agent linter dependencies.
+#
+# The shared gate in agents/core has no dependencies and must stay that way --
+# it runs in CI where installing anything is a liability. This file is for the
+# *linters*, which are allowed to need tools, because a missing tool is already
+# a first-class outcome in the exit-code contract (exit 3, "did not run").
+#
+# Python has a TOML parser in the standard library but no YAML parser, and
+# Kubernetes manifests and GitHub Actions workflows are YAML. Line-based
+# scanning of nested YAML produces false positives that a reviewer cannot
+# distinguish from real findings, so parse properly or report that the check
+# did not run.
+#
+# Install into an isolated environment; the wrapper prefers it automatically:
+#     python3 -m venv agents/devops/.venv
+#     agents/devops/.venv/bin/pip install -r agents/devops/requirements.txt
+PyYAML==6.0.3

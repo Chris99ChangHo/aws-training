@@ -40,7 +40,7 @@ auto_approve = ["read_files", "search_code"]
 # guess which patterns are paths.
 auto_approve_commands = [
     "{lab}/scanners/preflight\\.sh",
-    "{lab}/scanners/run_iac\\.sh( [A-Za-z0-9._/-]+)?",
+    "{lab}/scanners/run_operability\\.sh( [A-Za-z0-9._/-]+)?",
     "{lab}/scanners/run_pipeline\\.sh( [A-Za-z0-9._/-]+)?",
     "{core}/gate/merge_sarif\\.py( [A-Za-z0-9._/-]+)*",
     "{core}/gate/gate\\.py( [A-Za-z0-9._/=-]+)*",
@@ -79,7 +79,12 @@ pre_tool_use = "scanners/guard_infra.sh"
 spawn = "scanners/preflight.sh"
 
 [scanners]
-iac = "trivy"               # config mode: Terraform, CloudFormation, K8s, Dockerfile
+# Deliberately no IaC misconfiguration scanner. The security agent already runs
+# Trivy with --scanners misconfig, and an earlier version of this agent shelled
+# out to `trivy config`: measured on the same fixture, both produced the same 13
+# rule IDs. The boundary is the question being asked, not the file type --
+# security asks "is this vulnerable", this asks "can this be operated".
+operability = "builtin"     # scanners/operability_check.py, OPS-* rules
 dockerfile = "hadolint"
 pipeline = "actionlint"
 report_format = "sarif"     # OASIS SARIF 2.1.0

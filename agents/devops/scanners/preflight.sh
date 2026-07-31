@@ -15,6 +15,12 @@ LAB_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
 CORE_ROOT=$(cd "$LAB_ROOT/../core" && pwd)
 
+if [ -x "$LAB_ROOT/.venv/bin/python3" ]; then
+    PY="$LAB_ROOT/.venv/bin/python3"
+else
+    PY=python3
+fi
+
 report() {
     if command -v "$1" >/dev/null 2>&1; then
         printf '  %-12s present  (%s)\n' "$1" "$2"
@@ -24,8 +30,15 @@ report() {
 }
 
 printf 'generic-devops-agent preflight\n'
-printf '\nlinters:\n'
-report trivy      "IaC misconfiguration: Terraform, CloudFormation, K8s"
+printf '\nbuilt-in checks (no external tool):\n'
+printf '  %-12s present  (%s)\n' "operability" "OPS-* rules: state locking, pinning, probes, rollback"
+if "$PY" -c 'import yaml' 2>/dev/null; then
+    printf '  %-12s present  (%s)\n' "PyYAML" "needed for Kubernetes and GitHub Actions checks"
+else
+    printf '  %-12s MISSING  (%s)\n' "PyYAML" "K8s/Actions checks will report as not run; see requirements.txt"
+fi
+
+printf '\nexternal linters:\n'
 report hadolint   "Dockerfile"
 report actionlint "GitHub Actions workflows"
 

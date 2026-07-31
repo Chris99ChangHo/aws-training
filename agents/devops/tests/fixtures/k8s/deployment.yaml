@@ -1,0 +1,23 @@
+# Fixture only -- never applied. Deliberately missing operability controls:
+# no resource limits/requests, no probes, floating image tag, single replica,
+# no update strategy. Used to measure what Trivy already reports so the
+# operability checker does not duplicate it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: mycompany/web:latest
+          ports:
+            - containerPort: 8080

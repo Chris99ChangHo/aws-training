@@ -51,12 +51,17 @@ Run the wrappers, not the linters directly. The wrappers normalise exit codes
 and always leave a well-formed SARIF report behind.
 
 ```
-sh      scanners/preflight.sh            which linters are available
-sh      scanners/run_iac.sh <path>       IaC misconfiguration (Trivy config)
-sh      scanners/run_pipeline.sh <path>  Dockerfile + CI workflow lint
-python3 ../core/gate/merge_sarif.py      combine reports
-python3 ../core/gate/gate.py             deterministic verdict
+sh      scanners/preflight.sh                which linters are available
+sh      scanners/run_operability.sh <path>   operability gaps (OPS-* rules)
+sh      scanners/run_pipeline.sh <path>      Dockerfile + CI workflow lint
+python3 ../core/gate/merge_sarif.py          combine reports
+python3 ../core/gate/gate.py                 deterministic verdict
 ```
+
+You do not scan for vulnerabilities, misconfiguration or secrets. The security
+agent owns those, and it already runs Trivy with `--scanners misconfig` over the
+same files. If a reviewer needs that, say so and point at the security agent
+rather than producing a second copy of its findings.
 
 Exit codes mean specific things and you must not collapse them:
 

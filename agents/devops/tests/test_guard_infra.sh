@@ -1,7 +1,7 @@
 #!/bin/sh
 # test_guard_infra.sh - exercises the PreToolUse guard with synthetic harness
 # payloads. Requires no linters: the guard is pure decision logic, so it is
-# fully testable on a machine where trivy/hadolint/actionlint are absent.
+# fully testable on a machine where hadolint/actionlint are absent.
 #
 # Usage: sh tests/test_guard_infra.sh
 # Exit code 0 means every case behaved as specified.
@@ -131,7 +131,7 @@ expect $ALLOW "file tool reads a definition"          "$(rd 'infra/main.tf')"
 
 echo
 echo "== wrappers and read-only inspection =="
-expect $ALLOW "iac wrapper"                           "$(cc 'sh agents/devops/scanners/run_iac.sh .')"
+expect $ALLOW "operability wrapper"                   "$(cc 'sh agents/devops/scanners/run_operability.sh .')"
 expect $ALLOW "preflight wrapper"                     "$(cc 'sh agents/devops/scanners/preflight.sh')"
 expect $ALLOW "gate"                                  "$(cc 'python3 agents/core/gate/gate.py --fail-on high')"
 expect $ALLOW "git status"                            "$(cc 'git status')"
