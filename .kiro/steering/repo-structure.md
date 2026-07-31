@@ -76,8 +76,8 @@ aws-training/
 1. 사용 기술 목록 — [shields.io](https://shields.io/badges/static-badge) 정적 배지로 표시.
    제목 바로 아래, 첫 문단 위에 둔다.
    ```markdown
-   ![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logo=amazonaws&logoColor=white)
-   ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+   ![AWS](https://img.shields.io/badge/AWS-Bedrock-01A88D)
+   ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
    ![Strands Agents](https://img.shields.io/badge/Strands_Agents-1.x-4B32C3)
    ```
    로고는 [simple-icons](https://simpleicons.org/) slug를 쓴다(`logo=` 값).
