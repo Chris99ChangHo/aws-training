@@ -248,7 +248,8 @@ Kiro에서는 `/agent swap generic-sec-agent`도 동작한다. `swap` 키워드�
 모든 세션에 걸리고, 끌 방법이 파일을 편집하는 것뿐이다. 처음에는 여기에
 훅을 넣었고 그 결과 일반 작업 세션이 전부 보안 정책 아래 들어갔다.
 
-세션 **전체**를 보안 모드로 돌려야 할 때만 스위치를 켠다.
+세션 **전체**를 보안 모드로 돌려야 할 때만 스위치를 켠다. 에이전트를 지정하지
+않은 일반 세션까지 가드 아래 두고 싶을 때가 그 경우다.
 
 ```bash
 cp .claude/settings.local.json.example .claude/settings.local.json   # 켜기
@@ -260,10 +261,58 @@ rm .claude/settings.local.json                                       # 끄기
 `.claude/settings.local.json`은 `.gitignore` 대상이라 개인 선택이 커밋되지
 않고, `.example`만 리포에 남는다.
 
-**주의**: frontmatter 훅은 에이전트를 서브에이전트로 스폰할 때 발동하고,
-`claude --agent generic-sec-agent`처럼 **메인 세션**으로 띄울 때는 발동하지
-않는다([anthropics/claude-code#51372](https://github.com/anthropics/claude-code/issues/51372)).
-메인 세션으로 보안 작업을 할 거라면 위 스위치를 켜야 가드가 산다.
+#### 실측 (Claude Code 2.1.220)
+
+설계가 아니라 실행으로 확인했다. **훅이 실제로 실행됐는지**는 모델의 말이 아니라
+훅 자체에 임시 프로브(호출 시 로그 한 줄)를 심어 세었다. 모델은 자기 시스템
+프롬프트에서 체이닝 금지 규칙을 알고 있어서, 훅에 막히지 않고도 스스로 명령을
+쪼갠 뒤 "차단됐다"고 서술할 수 있다 — 모델을 계측기로 쓰면 구분되지 않는다.
+`--debug`는 훅 실행을 로깅하지 않아 쓸 수 없었다.
+
+| 실행 모드 | 훅 발동 |
+|---|---|
+| `claude --agent generic-sec-agent` (메인 세션) | **1회** |
+| Task 도구로 서브에이전트 스폰 | **1회** |
+| 일반 메인 세션 (에이전트 지정 없음) | **0회** |
+
+**에이전트 두 모드 모두에서 발동하고 일반 세션에서는 발동하지 않는다.** 이것이
+"가드는 에이전트의 정책이고 프로젝트의 정책이 아니다"가 실제로 성립한다는
+증거다.
+
+차단 동작도 확인했다. 판별 명령은 명령 체이닝을 썼다 — 가드가 구조적으로
+차단하고, 차단되지 않으면 무해한 출력만 나오므로 안전한 대조군이다.
+
+| 세션 | `echo alpha; echo beta` |
+|---|---|
+| 일반 메인 세션 | `alpha` `beta` — **제약 없음** |
+| 보안 에이전트 (스폰) | **차단**. `BLOCKED by guard_scope.sh: command chaining or substitution character (; & \| `) present.` |
+
+**정정**: 이 절의 이전 판은 "frontmatter 훅은 `--agent`로 메인 세션을 띄울 때
+발동하지 않는다"고 적고
+[anthropics/claude-code#51372](https://github.com/anthropics/claude-code/issues/51372)을
+근거로 달았다. 2.1.220에서 측정한 결과 **발동한다.** 이슈 내용이 이 버전에는
+맞지 않는다. 그래서 `--agent`로 보안 작업을 할 때 아래 스위치는 필요 없다.
+
+스위치가 여전히 필요한 경우는 하나 남는다 — **에이전트를 지정하지 않은 일반
+세션까지** 가드 아래 두고 싶을 때(위 표의 0회 행). 그때만 켠다.
+
+MCP 서버도 붙는다. 서브에이전트의 도구 목록에 `mcp__sec-scanners__get_scope`가
+나타나고, 호출하면 `.sec-scope`의 실제 내용(`localhost`, `127.0.0.1`, `::1`)을
+반환한다. 프로젝트 서브에이전트의 `mcpServers` frontmatter는 동작한다 —
+[#54921](https://github.com/anthropics/claude-code/issues/54921)이 말하는
+"무시된다"는 제약은 **플러그인** 서브에이전트에만 해당한다.
+
+단, MCP 도구 호출에는 사람의 권한 승인이 한 번 필요하다.
+
+```
+Claude requested permissions to use mcp__sec-scanners__get_scope,
+but you haven't granted it yet.
+```
+
+이건 결함이 아니라 의도에 맞는 동작이다. 보안 에이전트가 자기 스캐너를 쓰는
+것을 사람이 한 번 확인하는 것이고, 이 리포의 원칙("분석·생성은 자유롭게,
+파괴·유출은 사람이 승인")과 같은 결이다. **CI는 영향받지 않는다** — 결정론적
+경로는 MCP를 거치지 않고 래퍼와 게이트를 직접 호출한다.
 
 ### 스캐너 없이 검증
 
@@ -1144,7 +1193,7 @@ verdict : FAIL
 | Codex 서브에이전트 형식 | 문서 확인 못 함. 프롬프트를 별도 파일로 제공하는 방식으로 우회 |
 | Kiro `preToolUse` 훅 페이로드 스키마 | 공식 문서에 미명시. fail-closed로 대응 |
 | Kiro `preToolUse` matcher의 정규식 지원 | 미명시. 이름마다 훅을 하나씩 등록해 회피 |
-| `.claude/settings.json` / `.codex/config.toml` 실제 적용 | 해당 CLI 미설치 |
+| `.codex/config.toml` 실제 적용 | `codex` CLI 미설치 |
 | Trivy `image` 모드 | Docker 미설치. 레지스트리 이미지 참조는 이론상 가능하나 미실행 |
 
 해소된 항목:
@@ -1156,6 +1205,7 @@ verdict : FAIL
 | **`semgrep --metrics=off` / `--sarif`** | **플래그 수용 실측 확인** |
 | **`trivy --scanners vuln,secret,misconfig`** | **실행 확인** |
 | **파이프라인 종단 (스캔 → 병합 → 게이트)** | **실데이터로 확인, exit 1** |
+| **Claude Code 어댑터 실행** | **실행 확인 — 에이전트 로드, frontmatter 훅 발동·차단, 메인 세션은 비제약, MCP 도구 호출까지** |
 | **`nuclei -sarif-export`** | **실행 확인 — v3.11.0, 템플릿 13,391개. 다만 완료된 스캔에도 `executionSuccessful: false`를 쓴다(§23)** |
 | Codex 훅 차단 계약 | Codex 공식 문서로 확인 — exit 2 + stderr (§16) |
 
