@@ -24,5 +24,5 @@ AWS Security Agent를 해체해 특정 클라우드·AI 도구에 종속되지 �
 | 문서 | 내용 |
 |---|---|
 | [`agents/security/`](../agents/security) | 실습 본문 — 설계 결정과 트러블슈팅 17건, 검증 결과 |
-| [`agents/docs/devsecops-standards.md`](../agents/docs/devsecops-standards.md) | 표준과 개념 (SAST/SCA/DAST, STRIDE, CWE·CVSS·SARIF) |
+| [`agents/docs/security-standards.md`](../agents/docs/security-standards.md) | 표준과 개념 (SAST/SCA/DAST, STRIDE, CWE·CVSS·SARIF) |
 | [`agents/docs/porting-to-other-harnesses.md`](../agents/docs/porting-to-other-harnesses.md) | 다른 AI 도구로 옮기는 절차 |

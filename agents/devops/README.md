@@ -237,6 +237,8 @@ python3 ../core/gate/gate.py
 
 ## 관련
 
+- **경계**: [`../docs/agent-boundaries.md`](../docs/agent-boundaries.md) — 어떤 검사가 어느 에이전트의 일인지, 겹쳤던 실측 기록
+- 도구 설치: [`docs/setup-devops-tools.md`](./docs/setup-devops-tools.md)
 - 계열 공통 설계 원칙: [`../README.md`](../README.md)
 - 코드 작성 시 적용되는 규칙: `.kiro/skills/agent-conventions/SKILL.md`
 - 첫 번째 에이전트: [`../security/`](../security)

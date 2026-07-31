@@ -235,4 +235,4 @@ SEC_SAST_CONFIG=agents/security/scanners/rules \
 
 - [스캐너 설치 명령](./setup-sec-tools.md)
 - [실습 본문](../README.md)
-- [표준과 개념](../../docs/devsecops-standards.md)
+- [표준과 개념](../../docs/security-standards.md)

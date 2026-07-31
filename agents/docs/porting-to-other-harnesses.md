@@ -254,5 +254,5 @@ MCP는 개방 프로토콜이라 클라이언트를 고를 수 있다. Ollama �
 
 ## 관련 문서
 
-- 표준과 개념: [`devsecops-standards.md`](./devsecops-standards.md)
+- 표준과 개념: [`security-standards.md`](./security-standards.md)
 - 실습 본문: [`../security/README.md`](../security/README.md)

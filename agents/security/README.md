@@ -43,7 +43,7 @@ SaaS이고 이쪽은 로컬에서 도는 스크립트 묶음이라, 옮길 수 �
 못 만든 쪽에 가깝다 — 샌드박스가 필요하고, §14에서 적었듯 이 프로젝트의 가드는
 샌드박스가 아니다.
 
-> **보안 용어가 처음이라면** [`../docs/devsecops-standards.md`](../docs/devsecops-standards.md)를
+> **보안 용어가 처음이라면** [`../docs/security-standards.md`](../docs/security-standards.md)를
 > 먼저 읽는 게 빠르다. SAST/SCA/DAST의 차이, STRIDE가 무엇인지, CWE·CVSS·SARIF가
 > 각각 어떤 질문에 답하는지, 그리고 이 실습의 각 결정이 어떤 표준에 근거한
 > 것인지를 원문 링크와 함께 정리해뒀다.
@@ -69,7 +69,7 @@ AI는 결과를 읽고 수정 코드를 써주는 편의 기능이다. 없으면
 |---|---|
 | 일단 돌려보고 싶다 | 위 30초 요약 → [스캐너 설치](./docs/setup-sec-tools.md) |
 | 뭘 왜 깔았는지 / 어떻게 지우는지 | [로컬 환경 관리](./docs/local-environment.md) |
-| 용어를 모르겠다 (SAST? STRIDE? SARIF?) | [표준과 개념](../docs/devsecops-standards.md) |
+| 용어를 모르겠다 (SAST? STRIDE? SARIF?) | [표준과 개념](../docs/security-standards.md) |
 | 회사 정책에 맞게 임계값을 바꾸고 싶다 | [포팅 가이드 §1](../docs/porting-to-other-harnesses.md) — 3층 지도 |
 | 구독이 끝난 뒤에도 쓰고 싶다 | [포팅 가이드 §4](../docs/porting-to-other-harnesses.md) — 오픈소스 3방법 |
 | 다른 AI 도구를 지원하고 싶다 | [포팅 가이드 §2–3](../docs/porting-to-other-harnesses.md) |
@@ -1168,7 +1168,7 @@ agents/security/
 
 | 문서 | 내용 |
 |---|---|
-| [표준과 개념](../docs/devsecops-standards.md) | SAST/SCA/DAST 구분, STRIDE, CWE·CVSS·SARIF, 설계 원칙 ↔ 코드 매핑 |
+| [표준과 개념](../docs/security-standards.md) | SAST/SCA/DAST 구분, STRIDE, CWE·CVSS·SARIF, 설계 원칙 ↔ 코드 매핑 |
 | [포팅 가이드](../docs/porting-to-other-harnesses.md) | 다른 AI 도구로 옮기는 절차, 3층 지도, 오픈소스 모델 방향 |
 | [스캐너 설치](./docs/setup-sec-tools.md) | Semgrep/Trivy/Nuclei/jq 설치 명령, 라이선스 주의 |
 | [로컬 환경 관리](./docs/local-environment.md) | **용도별 설치 이유, 실측 용량, 제거 절차, 외부 통신 통제** |

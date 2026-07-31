@@ -31,7 +31,8 @@ AWS가 만들어 제공하는 에이전트를 해체해서, **특정 클라우�
 
 | 문서 | 내용 |
 |---|---|
-| [`docs/devsecops-standards.md`](./docs/devsecops-standards.md) | SAST/SCA/DAST 구분, STRIDE, CWE·CVSS·SARIF, 보안 설계 원칙 ↔ 코드 매핑, NIST SSDF |
+| [`docs/agent-boundaries.md`](./docs/agent-boundaries.md) | **어떤 검사가 어느 에이전트의 일인가.** 두 에이전트가 실제로 겹쳤던 실측 기록과, 다음에 겹치지 않게 하는 5단계 절차 |
+| [`docs/security-standards.md`](./docs/security-standards.md) | SAST/SCA/DAST 구분, STRIDE, CWE·CVSS·SARIF, 보안 설계 원칙 ↔ 코드 매핑, NIST SSDF. 1·2·4·5·7장은 security 전용, 3장(SARIF)은 계열 공통 |
 | [`docs/porting-to-other-harnesses.md`](./docs/porting-to-other-harnesses.md) | 다른 AI 도구로 옮기는 절차, 3층 지도, 오픈소스 모델 연결 방향 |
 
 ---
