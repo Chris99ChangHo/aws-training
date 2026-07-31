@@ -28,6 +28,15 @@
 # nuclei(DAST)는 여기서 돌리지 않는다. 러너에 스캔할 대상이 없고, .sec-scope가
 # 허용하지 않는 호스트를 스캔하는 것은 이 에이전트가 막으려는 바로 그 행위다.
 # DAST는 사람이 대상을 띄우고 권한을 확인한 뒤 로컬에서 돈다.
+#
+# **배포(CD) 단계는 없다.** 배포할 것이 없기 때문이다. 이 에이전트는 클론해서
+# 스크립트를 돌리는 방식으로 소비되고, 학습용 실습은 학습자가 자기 계정에
+# 직접 만든다(자동 배포하면 남의 계정에 과금이 생긴다). 아무것도 배포하지 않는
+# deploy 잡을 넣어 이름만 CI/CD로 만들지 않았다.
+#
+# 대신 SARIF를 GitHub 코드 스캐닝에 올린다. 지금까지 SARIF 상호운용성은 우리
+# 게이트가 읽는 것만 확인됐고 외부 소비자가 받아주는지는 검증되지 않았다.
+# 올리면 그 주장이 실증되고, 발견이 Security 탭이라는 표준 위치에 보인다.
 
 name: security gate
 
@@ -84,6 +93,10 @@ jobs:
     name: scan agents/ and gate (blocking)
     runs-on: ubuntu-latest
     needs: verify
+    permissions:
+      contents: read
+      # SARIF를 코드 스캐닝에 올리려면 필요하다. 잡 단위로만 준다.
+      security-events: write
     steps:
       - uses: actions/checkout@v7
 
@@ -124,7 +137,7 @@ jobs:
         working-directory: agents/security
         run: python3 gate/gate.py --fail-on high --max-allowed 0
 
-      - name: upload SARIF
+      - name: upload SARIF artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -132,10 +145,25 @@ jobs:
           path: agents/security/reports/*.sarif
           if-no-files-found: error
 
+      - name: upload SARIF to code scanning
+        # 게이트가 차단(exit 1)해도 올린다. 차단됐을 때가 결과를 보고 싶은
+        # 시점이고, 그때 업로드를 건너뛰면 Security 탭이 마지막 통과 상태로
+        # 남아 실제보다 깨끗해 보인다.
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: agents/security/reports/merged.sarif
+          # 두 범위를 카테고리로 구분한다. 같은 카테고리로 올리면 뒤에 올린
+          # 쪽이 앞을 덮어써서 한 범위의 결과만 남는다.
+          category: agents
+
   report:
     name: scan whole repo (report only)
     runs-on: ubuntu-latest
     needs: verify
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v7
 
@@ -171,10 +199,17 @@ jobs:
             echo "대부분 labs/agentcore-setup/의 생성된 락파일입니다."
           fi
 
-      - name: upload SARIF
+      - name: upload SARIF artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: sarif-repo
           path: ${{ runner.temp }}/repo-reports/*.sarif
           if-no-files-found: error
+
+      - name: upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ runner.temp }}/repo-reports/merged.sarif
+          category: repo
