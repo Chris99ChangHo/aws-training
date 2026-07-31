@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "aws-knowledge": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws"
+    },
+    "strands-agents": {
+      "command": "uvx",
+      "args": ["--with", "mcp<2.0", "strands-agents-mcp-server"]
+    },
+    "aws-agentcore": {
+      "command": "uvx",
+      "args": ["awslabs.amazon-bedrock-agentcore-mcp-server@latest"]
+    }
+  }
+}
