@@ -73,6 +73,40 @@ AI 에이전트가 실행한 도구 결과를 근거로 정리했으며, 판단�
 - [`notes/structured-output.md`](./notes/structured-output.md) — Pydantic 구조화 출력
 - [`notes/challenge-tasks.md`](./notes/challenge-tasks.md) — 추가 과제 메모
 
+과정 수준의 설계 판단 정리는
+[`developing-genai-apps/notes/agent-app-design.md`](../../developing-genai-apps/notes/agent-app-design.md)에
+있습니다. 이 폴더의 노트는 API 수준, 그쪽은 앱을 만들 때의 판단을 다룹니다.
+
+## 검증 결과
+
+각 스크립트가 무엇을 확인하는지와, 실제로 확인한 것을 구분해서 적습니다.
+
+| 스크립트 | 확인 대상 | 상태 |
+|---|---|---|
+| `01_basic_agent.py` | 최소 구성 에이전트 호출과 응답 | 확인 |
+| `02_builtin_tools.py` | 빌트인 도구 호출, Pydantic 구조화 출력 수신 | 확인 |
+| `03_web_search_agent.py` | 커스텀 `@tool` 등록, 도구 예외를 문자열로 반환해 에이전트가 복구 시도 | 확인 |
+| `04_concierge_agent.py` | 도구 여러 개를 놓고 모델이 선택 | 확인 |
+| `05_multi_turn.py` | 멀티턴에서 이전 턴 참조 | 확인 |
+| `06_observe_agent.py` | 토큰 사용량·도구 호출 관찰 | 확인 |
+| `07_chat_app.py` | Streamlit UI에서 스트리밍 출력 | 확인 |
+
+**중복 출력 문제**는 실행 중에 드러난 것입니다. Strands 기본 콜백이 토큰을
+스트리밍으로 출력하는데 마지막에 `print(response)`가 한 번 더 나가서 같은
+답변이 두 번 보였습니다. `callback_handler=None`으로 콜백을 끄고 최종 결과만
+출력하도록 통일했습니다. 자세한 내용은 위 "설계 결정" 절에 있습니다.
+
+### 확인하지 못한 것
+
+정직하게 남깁니다.
+
+| 항목 | 이유 |
+|---|---|
+| 응답 품질의 정량 비교 | LLM 응답은 비결정적이라 같은 프롬프트로도 매번 다릅니다. 이 랩은 "동작하는가"만 확인했고 품질 지표는 측정하지 않았습니다 |
+| 모델 프로바이더 교체 실측 | `notes/model-provider.md`의 Anthropic 직접·Ollama 경로는 API 키·로컬 모델이 없어 실행하지 않았습니다. Bedrock 경로만 확인했습니다 |
+| 도구 실패 시 로그 | `web_search`가 예외를 문자열로 돌려주지만 로그를 남기지 않아 원인 추적이 안 됩니다. 알려진 한계입니다 |
+| 자동화된 테스트 | 이 랩에는 테스트가 없습니다. 사람이 실행해 출력을 보는 방식입니다 |
+
 ## 비용 주의사항
 
 상시 과금되는 리소스는 없습니다. Bedrock 모델 호출량만큼만 과금되며,
