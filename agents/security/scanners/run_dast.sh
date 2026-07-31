@@ -88,6 +88,25 @@ fi
 
 [ -s "$OUT" ] || write_empty_sarif "$OUT" "nuclei"
 
+# Normalise invocations[].executionSuccessful.
+#
+# Measured with nuclei v3.11.0: it writes `executionSuccessful: false` into its
+# SARIF export even when the scan completed and produced findings, which makes
+# the gate refuse the report. The reasoning and the failure pairing it creates
+# are documented in scanners/normalize_sarif.py.
+#
+# Only reached when nuclei exited 0, so a genuinely failed scan never gets
+# marked successful -- that path returned above.
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$SCRIPT_DIR/normalize_sarif.py" "$OUT" || {
+        log "could not normalise $OUT; the gate will refuse it."
+        exit "$EXIT_SCAN_ERROR"
+    }
+else
+    log "python3 not found; leaving executionSuccessful as nuclei wrote it."
+    log "The gate will refuse this report. See docs/setup-sec-tools.md."
+fi
+
 log "completed."
 log "exit $EXIT_OK (scan completed; gate.py decides pass/fail)"
 exit "$EXIT_OK"

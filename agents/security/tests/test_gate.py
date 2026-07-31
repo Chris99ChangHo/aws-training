@@ -452,5 +452,88 @@ class TestManifestDefaults(unittest.TestCase):
         )
 
 
+class TestNormaliseSarif(unittest.TestCase):
+    """scanners/normalize_sarif.py — a wrapper-layer fix, not a gate change.
+
+    Exists because nuclei v3.11.0 writes executionSuccessful=false even on a
+    completed scan with findings. Without normalisation the gate exits 4 on any
+    DAST report that found something, while a clean scan passes — so findings
+    would surface as "scanner error" instead of a verdict.
+    """
+
+    SCRIPT = LAB_ROOT / "scanners" / "normalize_sarif.py"
+
+    def run_on(self, payload: str) -> tuple[int, str]:
+        """Write payload to a temp file, normalise it, return (code, contents)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.sarif"
+            path.write_text(payload, encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, str(self.SCRIPT), str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return proc.returncode, path.read_text(encoding="utf-8")
+
+    @staticmethod
+    def report(successful: object) -> str:
+        return json.dumps(
+            {
+                "version": "2.1.0",
+                "runs": [
+                    {
+                        "tool": {"driver": {"name": "Nuclei", "rules": []}},
+                        "results": [],
+                        "invocations": [{"executionSuccessful": successful}],
+                    }
+                ],
+            }
+        )
+
+    def test_false_is_flipped_to_true(self) -> None:
+        code, out = self.run_on(self.report(False))
+        self.assertEqual(code, 0)
+        doc = json.loads(out)
+        self.assertIs(doc["runs"][0]["invocations"][0]["executionSuccessful"], True)
+
+    def test_true_is_left_alone(self) -> None:
+        code, out = self.run_on(self.report(True))
+        self.assertEqual(code, 0)
+        doc = json.loads(out)
+        self.assertIs(doc["runs"][0]["invocations"][0]["executionSuccessful"], True)
+
+    def test_normalised_report_passes_the_gate(self) -> None:
+        """The whole point: the gate must accept the report afterwards."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "r.sarif"
+            path.write_text(self.report(False), encoding="utf-8")
+            before = run(GATE, "--report", str(path))
+            self.assertEqual(before.returncode, EXIT_ERROR)
+            subprocess.run(
+                [sys.executable, str(self.SCRIPT), str(path)],
+                capture_output=True,
+                check=False,
+            )
+            after = run(GATE, "--report", str(path))
+            self.assertEqual(after.returncode, EXIT_PASS)
+
+    def test_malformed_json_is_not_rewritten(self) -> None:
+        """Rewriting an unparseable file would destroy why it is unusable."""
+        code, out = self.run_on("not json at all")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "not json at all")
+
+    def test_missing_file_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [sys.executable, str(self.SCRIPT), str(Path(tmp) / "nope.sarif")],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

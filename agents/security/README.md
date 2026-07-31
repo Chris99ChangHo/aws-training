@@ -275,7 +275,7 @@ cd agents/security
 
 sh      scanners/preflight.sh       # 도구 설치 상태
 sh      tests/test_guard_scope.sh   # 훅 차단 로직 100 케이스
-python3 tests/test_gate.py          # 병합 + 게이트 + 무결성 34 케이스
+python3 tests/test_gate.py          # 병합 + 게이트 + SARIF 정규화 39 케이스
 python3 tests/test_mcp_server.py    # MCP 프로토콜 + 인자 검증 20 케이스
 python3 tests/test_adapters.py      # 생성물의 성질 19 케이스
 ```
@@ -827,7 +827,7 @@ exit 3을 기대하고 있었는데, 나중에 설치하면 깨질 코드였다.
 
 | 환경 | 결과 |
 |---|---|
-| 스캐너 설치됨 | 173 케이스 전부 통과 |
+| 스캐너 설치됨 | 178 케이스 전부 통과 |
 | PATH 제한 (미설치 시뮬레이션) | 전부 통과 (대칭 케이스 1건 skip) |
 
 **교훈**: 테스트가 무언가의 부재를 검증한다면, 그 부재를 테스트가 직접
@@ -927,6 +927,52 @@ anchor(f"{LAB_REL}/{p}") if "/" in p else anchor(p)
 수치는 그렇지 않다. 그래서 수치 검증은 감사 항목으로 고정해야 한다
 (`.kiro/skills/agent-release-check/`).
 
+### 23. DAST를 종단으로 돌리자 게이트가 발견을 "오류"로 보고했다
+
+`nuclei`를 설치하고 로컬 대상(`127.0.0.1:8099`, `.git/config`를 의도적으로
+노출)에 처음으로 종단 실행했다. 스캔은 성공했고 `git-config`를 medium으로
+찾았는데, 게이트가 **exit 4**로 판정을 거부했다.
+
+```
+error: Nuclei reported executionSuccessful=false. The scan did not complete,
+so its result set is not evidence of a clean tree.
+Refusing to emit a verdict. An unusable report is an error, not a pass.
+```
+
+원인은 nuclei v3.11.0이 **완료된 스캔에도 `invocations[].executionSuccessful`을
+`false`로 쓴다**는 것이다. SARIF의 `arguments` 배열에 우리가 넘긴 플래그가
+그대로 있고 결과도 1건인데 자기 실행이 실패했다고 적혀 있다.
+
+게이트 규칙 자체는 옳다 — 스캐너가 죽어서 빈 리포트가 나온 것을 "깨끗함"으로
+읽으면 안 된다. 문제는 nuclei의 **다른 습관과 결합될 때** 생긴다.
+
+| nuclei 상황 | SARIF | `executionSuccessful` | 게이트 |
+|---|---|---|---|
+| 발견 없음 | 파일을 **아예 쓰지 않는다** → 래퍼가 빈 SARIF 생성 | `true` | **PASS** |
+| 발견 있음 | nuclei가 쓴다 | **`false`** | **exit 4 (오류)** |
+
+**깨끗하면 통과하고 발견이 있으면 스캐너 오류로 나온다.** exit 4를 "도구 문제니
+나중에 보자"로 읽는 사람에게는 발견이 조용히 사라진다. 게이트가 발견을 감추는
+방향으로 실패하는 것이라 가장 나쁜 조합이다.
+
+→ **래퍼에서 정규화한다.** `scanners/normalize_sarif.py`가 `false`를 `true`로
+뒤집고, `run_dast.sh`는 **nuclei가 exit 0으로 끝난 뒤에만** 호출한다. 실제로
+실패한 스캔은 그 위 분기에서 이미 exit 4로 빠지므로 이 경로에 오지 않는다.
+
+게이트에 넣지 않은 이유: 결정론적 판정기가 "어느 스캐너가 만든 파일인지"에
+의존하게 된다. 도구의 관례를 흡수하는 것은 래퍼의 일이고, 래퍼는 이미 종료
+코드에 같은 일을 하고 있다.
+
+파싱 불가능한 파일은 손대지 않는다. 읽을 수 없는 리포트를 덮어쓰면 **왜 쓸 수
+없는지에 대한 증거가 사라진다.** 게이트가 거부하는 것이 맞는 결과다.
+
+`[교훈]` 이 결함은 **단위 테스트 173개가 전부 통과하는 상태에서** 남아 있었다.
+테스트가 쓴 SARIF 픽스처는 우리가 만든 것이라 `executionSuccessful: true`였고,
+실제 도구가 무엇을 쓰는지는 아무도 확인하지 않았다. 계약을 테스트하는 것과
+**도구가 그 계약을 지키는지 확인하는 것은 다른 일**이다. 스코프 거부 로직을
+nuclei 없이 실측한 것(§16)은 유효했지만, 그것으로 "DAST 계층이 동작한다"고
+말할 수는 없었다.
+
 ## 검증 결과
 
 전부 이 세션에서 실측한 값이다.
@@ -993,7 +1039,7 @@ verdict     : FAIL
 | `test_gate.py` — SARIF 병합·게이트·리포트 무결성 | 34 | **Ran 34 tests, OK** |
 | `test_mcp_server.py` — MCP 프로토콜·인자 검증 | 20 | **Ran 20 tests, OK** |
 | `test_adapters.py` — 생성된 어댑터의 성질 | 19 | **Ran 19 tests, OK** |
-| 합계 | **173** | 전부 통과 |
+| 합계 | **178** | 전부 통과 |
 
 증가 경위 — 테스트가 늘어난 지점이 곧 결함이 발견된 지점이다.
 
@@ -1003,7 +1049,7 @@ verdict     : FAIL
 | 독립 감사 후 | 144 | 결함 8개 (§13) |
 | Codex 어댑터 후 | 153 | 읽기 도구 구멍 (§15) |
 | 스캐너 설치 후 | 154 | 환경 의존 테스트 (§20) |
-| 디렉토리 이전 후 | **173** | 죽은 허용 규칙 (§21) |
+| 디렉토리 이전 후 | **178** | 죽은 허용 규칙 (§21) |
 
 ### 게이트 판정 (픽스처 SARIF 2개 병합)
 
@@ -1057,13 +1103,15 @@ verdict     : FAIL        (exit 1)
 
 ### 종료 코드 실측
 
-현재 환경(semgrep·trivy 설치됨, nuclei 미설치)에서 측정한 값이다.
+현재 환경(semgrep·trivy·nuclei 전부 설치됨)에서 측정한 값이다.
 
 | 명령 | 코드 | 의미 |
 |---|---|---|
 | `run_dast.sh` (인자 없음) | 2 | 거부 |
 | `run_dast.sh https://example.com` | 2 | 스코프 밖 (도구 확인 전에 거부) |
-| `run_dast.sh http://localhost:8080` | 3 | 스코프 통과, nuclei 미설치 |
+| `run_dast.sh http://localhost@evil.test/` | 2 | userinfo 우회 — authority는 `evil.test` |
+| `run_dast.sh http://evil-localhost.test/` | 2 | 접미어 트릭 — 부분 일치 없음 |
+| `run_dast.sh http://127.0.0.1:8099` | **0** | 스코프 통과, nuclei 실행 완료 |
 | `run_sast.sh gate` | **0** | semgrep 실행 완료 |
 | `run_sca.sh gate` | **0** | trivy 실행 완료 |
 | `run_sast.sh` (PATH 제한으로 semgrep 숨김) | 3 | 도구 미설치 |
@@ -1092,8 +1140,6 @@ verdict : FAIL
 
 | 항목 | 이유 |
 |---|---|
-| **nuclei 실제 실행 (DAST)** | 미설치. 검사할 구동 중인 웹 서버가 없어 보류. 스코프 거부 로직은 nuclei 없이 실측 완료 |
-| Claude Code 어댑터 실행 | `claude` CLI 미설치. 스키마 대조까지만 |
 | Codex 어댑터 실행 | `codex` CLI 미설치. 문서 대조까지만 |
 | Codex 서브에이전트 형식 | 문서 확인 못 함. 프롬프트를 별도 파일로 제공하는 방식으로 우회 |
 | Kiro `preToolUse` 훅 페이로드 스키마 | 공식 문서에 미명시. fail-closed로 대응 |
@@ -1110,7 +1156,7 @@ verdict : FAIL
 | **`semgrep --metrics=off` / `--sarif`** | **플래그 수용 실측 확인** |
 | **`trivy --scanners vuln,secret,misconfig`** | **실행 확인** |
 | **파이프라인 종단 (스캔 → 병합 → 게이트)** | **실데이터로 확인, exit 1** |
-| `nuclei -sarif-export` | Nuclei 공식 문서로 확인 (실행은 미검증) |
+| **`nuclei -sarif-export`** | **실행 확인 — v3.11.0, 템플릿 13,391개. 다만 완료된 스캔에도 `executionSuccessful: false`를 쓴다(§23)** |
 | Codex 훅 차단 계약 | Codex 공식 문서로 확인 — exit 2 + stderr (§16) |
 
 ## 비용 주의사항
@@ -1147,8 +1193,9 @@ agents/security/
 ├── gate/
 │   ├── merge_sarif.py        SARIF runs 병합
 │   └── gate.py               결정론적 게이트 (Tier 3)
+│   └── normalize_sarif.py    도구 관례 정규화 (§23)
 ├── mcp/server.py             MCP 서버 (Tier 2, stdlib only)
-├── tests/                    173 케이스 (guard_scope 100, gate 34,
+├── tests/                    178 케이스 (guard_scope 100, gate 39,
 │                             mcp_server 20, adapters 19)
 ├── docs/setup-sec-tools.md   스캐너 설치
 └── .sec-scope                DAST 권한 경계

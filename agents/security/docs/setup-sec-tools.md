@@ -156,3 +156,41 @@ sh   tests/test_guard_scope.sh      # PreToolUse 훅 차단 로직 91 케이스
 python3 tests/test_gate.py          # SARIF 병합 + 게이트 + 무결성 34 케이스
 python3 tests/test_mcp_server.py    # MCP 프로토콜 + 인자 검증 19 케이스
 ```
+
+
+## nuclei 설치 후 확인 (DAST)
+
+```bash
+brew install nuclei
+nuclei -update-templates      # 래퍼는 -duc로 업데이트 체크를 끄므로 미리 받아야 한다
+```
+
+실측: v3.11.0, 템플릿 13,391개.
+
+`.sec-scope`가 기본으로 `localhost`·`127.0.0.1`·`::1`을 허용하므로, 스캔 대상은
+로컬에 직접 띄우면 됩니다. 검증 대상을 만드는 최소 방법:
+
+```bash
+mkdir -p /tmp/dast-target/.git
+printf '[core]\n\trepositoryformatversion = 0\n' > /tmp/dast-target/.git/config
+cd /tmp/dast-target && python3 -m http.server 8099 --bind 127.0.0.1
+```
+
+다른 터미널에서:
+
+```bash
+cd agents/security
+sh      scanners/run_dast.sh http://127.0.0.1:8099   # git-config를 medium으로 탐지
+python3 gate/merge_sarif.py
+python3 gate/gate.py --fail-on medium                # exit 1 (차단)
+```
+
+**nuclei의 두 가지 관례를 알아두세요.** 둘 다 래퍼가 흡수합니다.
+
+| 상황 | nuclei 동작 | 래퍼 대응 |
+|---|---|---|
+| 발견 없음 | SARIF 파일을 **아예 쓰지 않는다** | `write_empty_sarif`로 형식이 유효한 빈 리포트를 남긴다 |
+| 발견 있음 | `executionSuccessful: false`를 쓴다 (완료된 스캔인데도) | `scanners/normalize_sarif.py`가 `true`로 정규화한다 |
+
+정규화가 없으면 **깨끗한 스캔은 통과하고 발견이 있는 스캔은 게이트가 exit 4로
+거부**합니다. 경위는 README §23에 있습니다.
