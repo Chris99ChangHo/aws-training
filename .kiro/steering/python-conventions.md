@@ -3,8 +3,7 @@
 기본은 [PEP 8](https://peps.python.org/pep-0008/)(코드 스타일),
 [PEP 257](https://peps.python.org/pep-0257/)(docstring),
 [PEP 484](https://peps.python.org/pep-0484/)(타입 힌트)를 따른다.
-아래는 그중 자주 어긋나는 항목과, 이 리포 환경에서 실제로 문제가 됐던
-사항을 정리한 것이다.
+아래는 그중 자주 어긋나는 항목이다.
 
 ## 스타일 (PEP 8)
 
@@ -46,17 +45,10 @@
   종료 코드를 반환한다. 성공/실패를 종료 코드로 구분해 조합 가능하게 만든다.
 - `if __name__ == "__main__":` 가드를 둔다.
 
----
+## 파일 경로는 스크립트 위치 기준으로
 
-## 이 리포 환경에서 겪은 문제
-
-아래는 일반 권장사항을 넘어, 이 리포에서 실제로 발생해서 규칙으로
-남긴 항목이다.
-
-### 파일 경로는 스크립트 위치 기준으로
-
-읽고 쓰는 파일은 실행 위치(cwd)가 아니라 **스크립트 파일 위치**를
-기준으로 해석한다.
+읽고 쓰는 파일은 실행 위치(cwd)가 아니라 **스크립트 파일 위치**를 기준으로
+해석한다.
 
 ```python
 from pathlib import Path
@@ -64,47 +56,14 @@ from pathlib import Path
 CONFIG_PATH = Path(__file__).parent / "kb_info.json"
 ```
 
-**이유**: `open("kb_info.json")`처럼 상대 경로를 쓴 스크립트가, 폴더가
-깊어진 뒤 리포 루트에서 실행하니 `FileNotFoundError`로 깨졌다.
-클론한 사람이 바로 밟는 함정이 된다.
+**이유**: `open("kb_info.json")`처럼 상대 경로를 쓴 스크립트가, 폴더가 깊어진
+뒤 리포 루트에서 실행하니 `FileNotFoundError`로 깨졌다. 클론한 사람이 바로
+밟는 함정이 된다. 쉘 쪽 대응 규칙은 `shell-conventions.md`의 "경로는 cwd가
+아니라 대상 기준으로 해석한다"다.
 
-### 환경별 식별자 하드코딩 금지
+## 도메인별 규칙은 스킬에 있다
 
-AWS 계정 ID, 리소스 ID, 버킷명처럼 환경마다 달라지는 값은 코드에 박지
-않고 런타임에 조회하거나 설정 파일에서 읽는다.
-
-```python
-account_id = boto3.client("sts", region_name=REGION).get_caller_identity()["Account"]
-model_arn = f"arn:aws:bedrock:{REGION}:{account_id}:inference-profile/{MODEL_ID}"
-```
-
-**이유**: 공개 리포에 계정 ID가 노출되고, 다른 계정에서 재현이 불가능해진다.
-
-### 멱등성
-
-인프라를 생성하는 스크립트는 여러 번 실행해도 안전하게 만든다.
-이미 존재하면 재사용하고, 없으면 생성한다.
-
-```python
-try:
-    resp = client.create_role(RoleName=name, ...)
-except client.exceptions.EntityAlreadyExistsException:
-    resp = client.get_role(RoleName=name)
-```
-
-**이유**: 실습 중 스크립트를 중간에 취소하거나 재실행하는 일이 잦다.
-멱등하지 않으면 매번 리소스를 수동으로 정리해야 한다.
-
-**주의 - `put_role_policy`는 항상 전체 덮어쓴다.** `create_role`은
-존재 확인 분기를 넣기 쉽지만, IAM 인라인 정책을 넣는
-`put_role_policy`는 create가 아니라 upsert라서 호출할 때마다 정책
-전체를 통째로 교체한다. 스크립트 밖에서 `put_role_policy`로 권한을
-임시로 추가해 둔 상태에서, 스크립트를 그대로 재실행하면 그 임시
-권한이 스크립트에 정의된 원래 정책으로 되돌아가며 사라진다.
-(restaurant-concierge-rag 실습에서 실제로 재현: 별도로 추가한
-`bedrock:Rerank` 권한이 `setup_02_create_kb.py` 재실행 한 번으로
-사라져 리랭킹 스크립트가 다시 깨졌다.)
-
-→ 필요한 권한은 처음부터 스크립트의 정책 정의 자체에 포함시킨다.
-"일단 콘솔/CLI로 임시로 추가하고 나중에 코드에 반영하자"는 접근은
-재실행 시 그대로 되돌아간다.
+- AWS 리소스를 만드는 실습 스크립트(멱등성, 환경별 식별자,
+  `put_role_policy` 덮어쓰기 함정) → `aws-lab-conventions` 스킬
+- `agents/` 아래 벤더 독립 에이전트(종료 코드 계약, 어댑터 생성물)
+  → `agent-conventions` 스킬
