@@ -44,8 +44,8 @@ auto_approve_commands = [
     "{lab}/scanners/preflight\\.sh",
     "{lab}/scanners/run_sast\\.sh( [A-Za-z0-9._/-]+)?",
     "{lab}/scanners/run_sca\\.sh( [A-Za-z0-9._/-]+)?",
-    "{lab}/gate/merge_sarif\\.py( [A-Za-z0-9._/-]+)*",
-    "{lab}/gate/gate\\.py( [A-Za-z0-9._/=-]+)*",
+    "{core}/gate/merge_sarif\\.py( [A-Za-z0-9._/-]+)*",
+    "{core}/gate/gate\\.py( [A-Za-z0-9._/=-]+)*",
     "git (status|diff|log)( [A-Za-z0-9._/-]+)*",
 ]
 

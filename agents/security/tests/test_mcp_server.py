@@ -227,7 +227,7 @@ class TestToolCalls(unittest.TestCase):
         """
         if shutil.which("semgrep") is None:
             self.skipTest("semgrep not installed on this host")
-        result = self.call("run_sast", {"path": "gate"})
+        result = self.call("run_sast", {"path": "mcp"})
         body = self.text(result)
         self.assertIn("exit=0", body)
         self.assertIn("scan completed", body)

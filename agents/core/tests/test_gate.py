@@ -10,6 +10,7 @@ zero-dependency constraint. Run from anywhere:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,10 +18,13 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-LAB_ROOT = Path(__file__).resolve().parent.parent
-FIXTURES = LAB_ROOT / "tests" / "fixtures"
-MERGE = LAB_ROOT / "gate" / "merge_sarif.py"
-GATE = LAB_ROOT / "gate" / "gate.py"
+CORE_ROOT = Path(__file__).resolve().parent.parent
+# The gate is shared code, but its thresholds are declared per agent, so one
+# test still reads the security agent's manifest to check they agree.
+SECURITY_ROOT = CORE_ROOT.parent / "security"
+FIXTURES = CORE_ROOT / "tests" / "fixtures"
+MERGE = CORE_ROOT / "gate" / "merge_sarif.py"
+GATE = CORE_ROOT / "gate" / "gate.py"
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -28,11 +32,20 @@ EXIT_ERROR = 4
 
 
 def run(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """Invoke one of the gate scripts and capture its output."""
+    """Invoke one of the gate scripts and capture its output.
+
+    AGENT_ROOT is set explicitly. The gate lives in agents/core and serves more
+    than one agent, so without it the gate would fall back to cwd, fail to find
+    a manifest, and use its built-in strict defaults. Those happen to equal the
+    security agent's declared thresholds, so the manifest test would pass
+    without ever reading the manifest.
+    """
+    env = {**os.environ, "AGENT_ROOT": str(SECURITY_ROOT)}
     return subprocess.run(
         [sys.executable, str(script), *args],
         capture_output=True,
         text=True,
+        env=env,
         check=False,
     )
 
@@ -440,7 +453,7 @@ class TestManifestDefaults(unittest.TestCase):
         import tomllib
 
         manifest = tomllib.loads(
-            (LAB_ROOT / "agent" / "manifest.toml").read_text(encoding="utf-8")
+            (SECURITY_ROOT / "agent" / "manifest.toml").read_text(encoding="utf-8")
         )
         result = run(GATE, "--report", str(FIXTURES / "clean.sarif"))
         self.assertIn(

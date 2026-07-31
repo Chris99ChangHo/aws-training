@@ -38,15 +38,33 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-LAB_ROOT = Path(__file__).resolve().parent.parent
+def resolve_agent_root() -> Path:
+    """Return the agent folder this run belongs to.
+
+    The gate is shared by more than one agent, so it cannot derive the agent
+    from its own location the way it did when it lived inside one. Identity
+    comes from outside: `AGENT_ROOT` if set, otherwise the current directory,
+    which is what the documented usage (`cd agents/<domain>`) produces.
+
+    Resolution is deliberately not silent about failure -- an agent folder is
+    recognised by holding `agent/manifest.toml`, and if neither candidate does,
+    the caller finds out from `main()` instead of getting a permissive default.
+    """
+    override = os.environ.get("AGENT_ROOT")
+    if override:
+        return Path(override).resolve()
+    return Path.cwd().resolve()
+
+
+AGENT_ROOT = resolve_agent_root()
 
 # Honour the same environment override the scanner wrappers use
 # (scanners/_lib.sh). Without this, setting SEC_REPORT_DIR moved where the
 # scanners wrote but not where the gate read, so the gate silently evaluated a
 # stale report from the default directory.
-REPORT_DIR = Path(os.environ.get("SEC_REPORT_DIR") or LAB_ROOT / "reports")
+REPORT_DIR = Path(os.environ.get("SEC_REPORT_DIR") or AGENT_ROOT / "reports")
 DEFAULT_REPORT = REPORT_DIR / "merged.sarif"
-MANIFEST = LAB_ROOT / "agent" / "manifest.toml"
+MANIFEST = AGENT_ROOT / "agent" / "manifest.toml"
 
 EXIT_PASS = 0
 EXIT_FAIL = 1

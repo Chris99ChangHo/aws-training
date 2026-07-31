@@ -35,6 +35,11 @@ MANIFEST_PATH = LAB_ROOT / "agent" / "manifest.toml"
 # paths would also embed the developer's home directory in a file that gets
 # committed.
 LAB_REL = LAB_ROOT.relative_to(WORKSPACE_ROOT).as_posix()
+# Shared code lives beside the agent folders, not inside one of them. Extracted
+# once a second agent needed the same deterministic gate (agents/README.md
+# principle 3: abstract when there are two consumers, not before).
+CORE_ROOT = LAB_ROOT.parent / "core"
+CORE_REL = CORE_ROOT.relative_to(WORKSPACE_ROOT).as_posix()
 
 KIRO_OUT = WORKSPACE_ROOT / ".kiro" / "agents" / "generic-sec-agent.json"
 CLAUDE_AGENT_OUT = WORKSPACE_ROOT / ".claude" / "agents" / "generic-sec-agent.md"
@@ -163,18 +168,19 @@ def anchor(pattern: str) -> str:
 
 
 def expand_lab(pattern: str) -> str:
-    """Substitute the `{lab}` placeholder with this agent's relative path.
+    """Substitute path placeholders with the paths this agent actually uses.
 
-    Only `{lab}` is recognised. Any other brace-delimited token is a typo in
-    the manifest, and silently emitting it would produce an allow rule that
+    `{lab}` is this agent's own folder; `{core}` is the shared code extracted
+    for use by more than one agent. Any other brace-delimited token is a typo
+    in the manifest, and silently emitting it would produce an allow rule that
     can never match -- the exact failure this replaced. Fail loudly instead.
     """
-    expanded = pattern.replace("{lab}", LAB_REL)
+    expanded = pattern.replace("{lab}", LAB_REL).replace("{core}", CORE_REL)
     leftover = re.search(r"\{[^}]*\}", expanded)
     if leftover:
         raise ValueError(
             f"unknown placeholder {leftover.group(0)!r} in manifest "
-            f"pattern {pattern!r}; only '{{lab}}' is supported"
+            f"pattern {pattern!r}; supported: '{{lab}}', '{{core}}'"
         )
     return expanded
 
