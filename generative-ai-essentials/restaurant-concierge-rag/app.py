@@ -43,7 +43,7 @@ RESERVATION_OPTIONS: dict[str, dict | None] = {
     "예약 가능만": {"equals": {"key": "reservation_available", "value": "true"}},
 }
 
-# 테마별 색상 토큰 (WCAG 2.1 AA 대비 기준 검증됨 - ui-conventions.md 참고)
+# 테마별 색상 토큰 (WCAG 2.1 AA 대비 기준 검증됨 - streamlit-ui 스킬 참고)
 THEMES: dict[str, dict[str, str]] = {
     "light": {
         "bg": "#FFFFFF",

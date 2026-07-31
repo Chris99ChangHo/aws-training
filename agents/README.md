@@ -129,3 +129,5 @@ DevOps 에이전트의 요구가 드러난 뒤에 아래를 판단한다.
 
 - 최상위 과정 목록: [`../README.md`](../README.md)
 - 리포 구조 규약: `.kiro/steering/repo-structure.md`
+- 위 원칙을 코드 작성 시 적용되는 규칙으로 옮긴 것:
+  `.kiro/skills/agent-conventions/SKILL.md`

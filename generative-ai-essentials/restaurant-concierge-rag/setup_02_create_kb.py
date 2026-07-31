@@ -44,7 +44,7 @@ EMBED_DIMENSION = 1024
 
 S3_PREFIX = "restaurant-docs/"
 # 버킷명은 setup 실행 시점에 kb_info.json에서 읽거나, 최초 실행 시
-# 계정 ID를 런타임에 조회해 조합한다 (하드코딩 금지 - python-conventions.md).
+# 계정 ID를 런타임에 조회해 조합한다 (하드코딩 금지 - aws-lab-conventions 스킬).
 BUCKET_PREFIX = "restaurant-concierge-kb-data"
 
 VECTOR_FIELD = "bedrock-knowledge-base-default-vector"
