@@ -19,6 +19,7 @@ AWS 오프라인 교육 과정별 실습·이론 정리와, 그 과정에서 파
 ```
 aws-training/
 ├── README.md                두 축(과정/에이전트) 목록
+├── .github/workflows/        CI. 결정론적 게이트가 실제로 돈다
 ├── .kiro/steering/           항상 로드되는 규칙 (얇게 유지)
 ├── .kiro/skills/             필요할 때 로드되는 상세 규칙·절차
 ├── .kiro/ .claude/ .codex/   생성된 어댑터 (직접 수정 금지)

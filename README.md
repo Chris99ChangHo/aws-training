@@ -34,6 +34,8 @@ AWS가 제공하는 에이전트를 해체해서, 특정 클라우드 벤더에�
 
 ```
 aws-training/
+├── .github/workflows/                  <- CI. 결정론적 게이트가 실제로 돈다
+│
 ├── agents/                             <- 벤더 독립 에이전트 계열
 │   ├── README.md                       계열 개요·공통 설계 원칙
 │   ├── docs/                           계열 공통 문서 (표준, 포팅 가이드)
@@ -41,7 +43,8 @@ aws-training/
 │
 ├── generative-ai-essentials/           <- 과정
 │   ├── README.md
-│   ├── notes/                          이론 정리 (선택)
+│   ├── notes/                          이론 정리
+│   │   └── _raw/                       수업 필기 원본 (가공하지 않음)
 │   └── seoul-travel-planner-kb/        실습
 ├── security-engineering/
 ├── developing-genai-apps/
@@ -51,6 +54,11 @@ aws-training/
 
 `.kiro/`, `.claude/`, `.codex/`의 에이전트 설정은 **생성물**입니다. 직접
 수정하지 않고 `agents/<이름>/adapters/build.py`로 재생성합니다.
+
+이론 정리는 원본과 정리본을 분리합니다. `notes/_raw/`에 수업 필기를 가공하지
+않고 두고, 정리본에서는 `[실측]`·`[문서]`·`[해석]`으로 근거를 구분합니다.
+필기에 없던 사실을 정리본에 섞으면 "수업에서 들은 것"과 "AI가 아는 것"을
+독자가 구분할 수 없기 때문입니다.
 
 ## 도구 체인
 
