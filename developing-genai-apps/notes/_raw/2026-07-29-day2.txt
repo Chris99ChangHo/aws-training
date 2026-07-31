@@ -1,0 +1,980 @@
+Developing Generative AI Applications on AWS
+
+
+하네스 엔지니어링은 시간관계상 스스로 공부
+
+에이전트 기초
+
+에이전틱 루프 : 추론 → 호출 → 관찰 반복
+
+에이전트 구성요소 6가지 : 
+Model
+컨텍스트를 읽고 다음 행동을 결정하는 추론 엔진 — 에이전트의 두뇌
+Tools
+외부 시스템과 상호작용하는 인터페이스 — API, DB, 파일
+Memory
+대화 이력 + 장기 기억 — 컨텍스트 축적
+Guardrails
+행동 제한 — 금지 도구, 비용 한도, PII 차단
+Context
+시스템 프롬프트 + 대화 + 도구 결과
+Orchestration
+ReAct/ReWoo 루프 제어 + 멀티스텝 관리
+
+같은 모델, 같은 SDK를 쓰는 두 팀의 에이전트 품질 차이는 결국 도구 설계와 상태 설계에서 갈립니다.
+
+핵심 메커니즘 : ReAct, ReWoo
+구분	ReAct	ReWoo
+전략	매 스텝 판단	계획 먼저, 일괄 실행
+LLM 호출	N회 (스텝마다)	2회 (계획 + 종합)
+토큰 효율	낮음	높음 (HotpotQA 기준 최대 5배)
+실행 시간	직렬 — 느림	병렬 — 빠름
+적응력	✓ 높음 (중간 결과에 반응)	낮음 (계획 실패 시 재계획)
+적합한 경우	대화형, HITL, 결과 의존성 높을 때	멀티도구, 병렬 가능, 비용 민감
+
+도구 = 함수 + 도구 스키마
+LLM은 코드를 읽지 못합니다 — name·description·inputSchema 설명서가 도구 선택의 유일한 근거입니다.
+
+함수 — 실행되는 코드 (그대로)
+python
+
+def get_menu(restaurant_id: str) -> str:
+    return db.fetch_menu(restaurant_id)
+
+# 지금까지는 개발자가 직접 호출했음
+menu = get_menu("R001")
+
+도구 스키마 — LLM이 읽는 설명서 (JSON)
+json
+
+{
+  "toolSpec": {
+    "name": "get_menu",
+    "description": "식당의 현재 메뉴와 가격 조회. 메뉴·가격 질문 시 호출.",
+    "inputSchema": { "json": {
+      "type": "object",
+      "properties": {
+        "restaurant_id": { "type": "string" }
+      },
+      "required": ["restaurant_id"]
+    } }
+  }
+}
+
+도구 스키마 3요소
+LLM이 도구를 올바르게 선택하기 위한 필수 정보
+
+name
+동사+명사 패턴 — search_restaurants, get_weather, create_ticket
+
+description
+언제 쓰는지 + 입력 형식 + 반환값 — 도구 선택의 유일한 근거
+
+inputSchema
+required/optional 구분, 타입 제약, enum으로 입력 검증
+
+@tool 데코레이터
+스키마 3요소를 손으로 쓰지 않는 법 — Python 함수 자동 변환 (구현 예: Strands)
+
+python
+
+from strands import Agent, tool
+
+# 1 도구 정의 — docstring이 LLM에게 전달되는 도구 설명
+@tool
+def search_restaurants(location: str, cuisine: str = None) -> str:
+    """지역과 요리 종류로 식당을 검색합니다.
+
+    사용자가 식당 추천을 요청할 때 호출하세요.
+    location: 검색할 지역명 (예: "강남역")
+    cuisine: 요리 종류 (예: "이탈리안"). 생략하면 전체 검색
+    """
+    return f"{location} 근처 식당 3곳 발견"
+
+# 2 Agent에 도구 전달 → ReAct 루프에서 자율 호출
+agent = Agent(
+    model="us.anthropic.claude-sonnet-4-6",
+    tools=[search_restaurants],
+)
+
+# 3 실행 — 모델이 스스로 도구 호출을 결정하고 결과를 종합
+result = agent("강남역 이탈리안 추천해줘")
+1
+@tool 데코레이터 — 평범한 Python 함수가 그대로 도구가 됨. docstring·타입 힌트가 name·description·inputSchema로 자동 변환
+2
+tools=[...] 등록 — 모델이 선택할 수 있는 행동 목록. 리스트에 담는 순간 ReAct 루프의 선택지
+3
+실행 — 호출 여부·인자를 모델이 스스로 결정하고, Observation을 종합해 최종 답변
+
+좋은 description 공식
+"언제" + "뭘 넣고" + "뭘 받나" + "주의사항" — 길이가 아니라 판단 정보의 밀도
+
+필수 요소
+언제: "비용 금액/증감/추이 질문 시 호출"
+입력: service — AWS 서비스명 (ec2, s3)
+입력: period — 조회 기간 (last-7d)
+출력: 일별 비용 데이터 (JSON)
+주의: 서비스명 불명확하면 확인 후 호출
+
+핵심 요약
+1에이전트의 정의와 구조
+챗봇은 답변만, 에이전트는 행동까지 — 도구를 호출하여 목표 달성
+Reason → Act → Observe 루프 — 목표 달성까지 반복
+자율성 3단계 — AI Assistant → AI Agent → Agentic AI
+2핵심 메커니즘
+ReAct — 매 스텝 추론 후 행동, 높은 적응력
+ReWoo — 계획 먼저 + 병렬 실행, 토큰 최대 5배 효율 (HotpotQA 벤치마크 기준)
+패턴 선택 — 대화형은 ReAct, 병렬·비용 민감은 ReWoo
+3도구 설계
+도구 = 함수 + 도구 스키마 — LLM이 읽을 수 있는 설명서
+Tool Use 6단계 — toolSpec 전달부터 최종 답변까지
+좋은 description = 언제 + 뭘 넣고 + 뭘 받나 + 주의사항
+4Human-in-the-Loop
+읽기 = 자동, 쓰기 = 승인, 고위험 = 이중 확인
+HITL 3패턴 — 승인 게이트 · 에스컬레이션 · 감사 로그
+설계 원칙 — 최소 권한 · 점진적 자율 · 실패 안전
+
+에이전트 상태와 프롬프트
+
+모델은 기억하지 않는다 — 매번 다시 읽는다
+매 호출마다 messages[] 전체가 모델에 재전송됩니다 — session_id로 대화를 격리하고 인메모리 한계를 확인합니다.
+
+세션과 session_id
+대화 한 단위의 messages[] 묶음이 세션 — session_id는 그 묶음을 여는 열쇠
+
+python
+
+# 같은 session_id → 같은 messages[]를 이어받음 (개념 예)
+chat(session_id="mina-conv1", "강남역 이탈리안 추천해줘")
+chat(session_id="mina-conv1", "거기로 오늘 7시 예약해줘")
+# → "거기" = 트라토리아 벨라 — 직전 턴이 같은 세션에 있음
+
+chat(session_id="mina-conv2", "거기로 오늘 7시 예약해줘")
+# → "거기"가 어디인가요? — 새 세션은 빈 messages[]에서 시작
+
+chat(session_id="juno-conv1", "내 예약 보여줘")
+# → mina의 대화와 완전 격리 — 다른 사용자, 다른 세션
+1 세션 — 대화 한 단위로 묶인 messages[] — 저장·복원·격리의 기본 단위
+2 session_id — 그 묶음을 찾는 키. 같은 id면 대화가 이어지고, 새 id면 처음부터
+3 격리 — 사용자·대화가 다르면 id도 달라야 함 — 섞이면 남의 맥락이 흘러듦
+
+인메모리 상태의 문제
+상태 관리 없이는 프로덕션 불가
+
+기억 상실
+프로세스 종료 시 messages[] 전체 유실 — 서버 재시작, 배포, Lambda 콜드스타트
+
+토큰 폭발
+대화가 길어지면 매 호출마다 수만 토큰 전송 — 비용↑ 지연↑
+
+윈도우 초과
+컨텍스트 윈도우를 넘으면 API 에러 — 에이전트 멈춤
+
+멀티유저 혼선
+session_id 없이 여러 사용자의 messages[]가 섞임
+
+네 문제 모두 상태를 프로세스 메모리에만 두어서 생깁니다 — 다음 파트의 상태 관리 구성요소가 각각의 해법입니다.
+
+상태 관리 구성요소
+각 구성요소는 독립적, 필요한 것만 선택하여 조합
+
+
+수업에선 영속화, 축소, 장기기억 세개만 다룰것
+ㄴ 일반적으로 중요?해서
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+에이전트 상태 vs 호출 컨텍스트
+둘 다 모델에는 안 보이는 존재 — 수명과 주입 방향의 차이 (Strands: agent.state · agent.state)
+
+에이전트 상태 - agent.state
+세션 전체 유지
+도구·훅이 읽고 쓰는 내부 저장소
+세션 동안 여러 턴에 걸쳐 유지
+세션 스토어가 함께 영속화
+용도: 인증 토큰, 호출 카운터, 도구 간 공유 데이터
+vs
+호출 컨텍스트 - agent.state
+1턴만 유효
+호출자(caller)가 외부에서 주입
+호출 시 파라미터로 함께 전달
+저장 안 됨 — 매 호출마다 재주입
+용도: API 키, user_id, 역할(role), 세션 비밀
+
+모델이 보는 것 vs 못 보는 것
+LLM에 노출되면 안 되는 민감 정보는 호출 컨텍스트로
+
+상태	LLM이 봄?	도구/훅 접근?	용도
+messages[]	✓ 매번 전체 전송	✓	대화 맥락 유지
+에이전트 상태	✗	✓ 읽기/쓰기	도구 간 내부 데이터
+호출 컨텍스트	✗	✓ 실행 컨텍스트로 접근	외부 주입 비밀/설정
+
+세션 너머 — 장기 기억
+세션이 끝나도 남아야 하는 기억의 조감 — 수명 3계층의 마지막 층
+
+세션의 끝이 기억의 끝은 아니다
+대화에서 남길 것을 추출해 저장하고, 다음 세션이 시작될 때 회수해 컨텍스트에 주입합니다.
+
+장기 기억의 동작 원리
+추출 → 저장 → 회수 → 주입 — 세션과 세션을 잇는 네 단계
+
+기억의 세 종류와 남길 것
+무엇을 남기는가 — 사실 · 선호 · 에피소드
+
+사실 (Semantic)
+"미나의 회사는 강남역 근처" — 잘 변하지 않는 정보
+
+선호 (Preference)
+"창가 자리 선호 · 매운 음식 못 먹음"
+
+에피소드 (Episodic)
+"7/20 트라토리아 벨라 예약 — 만족" — 과거 사건의 요약
+
+에이전트 프롬프트 설계
+시스템 프롬프트 구조부터 추론 모드 유도까지 — 답변이 아니라 행동을 설계하는 관점
+
+좋은 답변이 아니라 올바른 행동
+에이전트 프롬프트는 도구 선택과 실행을 지배합니다 — 4블록 구조와 역할 분담, 추론 모드 유도가 행동 품질을 결정합니다.
+
+시스템 프롬프트 4블록 구조
+에이전트가 올바르게 행동하도록 하는 설계 구조
+
+python
+
+# 시스템 프롬프트 4블록 — 역할·규칙·형식·제한
+"""
+## 1 역할 (Role)
+당신은 AWS 비용 분석 전문가입니다.
+도구를 사용하여 정확한 데이터 기반으로 답변합니다.
+
+## 2 행동 규칙 (Rules)
+- 비용 데이터 필요 → get_cost_data 먼저 호출
+- 추측 금지 — 항상 도구 결과 기반
+- 한 번에 도구 3개 이상 연속 호출 금지
+
+## 3 출력 형식 (Format)
+- 금액: USD, 소수점 2자리
+- 증감률: 퍼센트
+- 요약 먼저, 상세 나중에
+
+## 4 제한 (Constraints)
+- 비용 최적화 "실행"은 금지 (분석과 제안만)
+- 다른 계정 접근 금지
+"""
+1역할 — 정체성 + 행동 방침. "도구로 데이터 기반 답변"까지 역할에 포함
+2행동 규칙 — 도구 사용 순서·추측 금지·호출 횟수 제한. 오동작 시 가장 먼저 손볼 블록
+3출력 형식 — 단위·자릿수·서술 순서를 고정해 응답 일관성 확보
+4제한 — 권한의 경계. 못 하게 할 일(실행 금지·계정 접근 금지)을 명시
+
+시스템 프롬프트 vs 도구 description
+행동 규칙과 도구 선택 근거 — 무엇을 어디에 쓰나
+
+설계 요소	어디에	이유
+역할 · 행동 규칙 · 제한	시스템 프롬프트	에이전트 전체 — 모든 턴에 적용
+출력 형식 (단위 · 순서)	시스템 프롬프트	응답 일관성 — 전역 규칙
+"언제 이 도구를 쓰나"	도구 description	도구 선택의 근거 — 도구 단위
+파라미터 의미와 형식	도구 description + inputSchema	입력 검증 — 스키마와 함께
+
+핵심 요약
+1messages[]와 세션
+messages[] = 매 호출마다 모델에 전송되는 대화 전체
+session_id로 사용자×대화 격리 — 멀티유저 서빙의 기본
+인메모리 → 프로세스 종료 시 유실 → 외부 저장소 영속화 필수
+2상태 관리 구성요소
+6가지 — 영속화·축소·장기 기억·오프로드·스냅샷·인터럽트
+수명 3계층 — 턴 · 세션 · 세션 너머(장기 기억)
+에이전트 상태 vs 호출 컨텍스트 — 수명과 주입 방향이 다름
+3세션 너머 — 장기 기억
+세션 종료 = messages[] 소멸 — 단골 인식은 장기 기억의 몫
+추출 → 저장 → 회수 → 주입 — 회수는 검색(RAG와 같은 구조)
+사실 · 선호 · 에피소드 — 전부 저장은 독, 남길 것만
+4에이전트 프롬프트 설계
+일반 프롬프트 = 좋은 답변, 에이전트 프롬프트 = 올바른 행동
+시스템 프롬프트 4블록 — 역할 + 행동 규칙 + 출력 형식 + 제한
+행동 규칙은 시스템 프롬프트에, 도구 선택 근거는 description에
+
+Strands Agents SDK
+
+에이전트 개발의 패러다임 전환
+LLM의 추론 도약이 바꾼 판단의 주체
+
+1세대 · 직접 구현
+LLM API를 직접 연결
+루프·프롬프트·응답 파싱을 전부 직접 코딩. 에이전트마다 같은 기반 코드를 반복.
+대표
+OpenAI·Anthropic API 직접 호출
+2세대 · 에이전트 프레임워크
+그래프가 흐름을 통제
+그래프 노드·상태 머신·역할 정의로 흐름을 설계. 보일러플레이트가 다시 누적.
+대표
+LangChain · LangGraph · CrewAI
+3세대 · Model-Driven
+모델이 흐름을 결정
+LLM 추론 도약으로 모델이 도구 선택과 순서를 직접 판단. 개발자는 도구만 등록.
+대표
+Strands Agents SDK
+
+
+Agent = Model + Tools + System Prompt
+
+구성요소의 역할
+Model만 필수 — 나머지는 없어도 동작하는 선택 요소
+
+Model
+추론 엔진 — 도구 선택과 완료 여부를 판단
+
+LLM 프로바이더 — BedrockModel 등 공식 15종
+필수 — 에이전트의 두뇌
+심화 → PART 5 · 모델 프로바이더
+Tools
+행동 능력 — 외부 세계와 상호작용
+
+@tool 함수 또는 MCPClient
+선택 — 없으면 그냥 채팅봇
+심화 → PART 4 · 도구 생태계
+System Prompt
+페르소나 — 역할·규칙·응답 형식 정의
+
+LLM의 system 메시지로 전달
+선택 — 없으면 범용 응답
+작성법 → 이 파트에서 이어서
+
+Model — 추론 엔진
+어떤 LLM이 판단을 맡을지 지정 — 에이전트의 두뇌
+
+python
+
+from strands import Agent
+from strands.models import BedrockModel
+
+# 1 프로덕션 — Bedrock (IAM 인증, 권장)
+model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-6")
+agent = Agent(model=model)
+
+# 2 로컬 개발로 전환 — 아래 2줄만 교체, 나머지 코드는 그대로
+# from strands.models.ollama import OllamaModel
+# agent = Agent(model=OllamaModel(model_id="llama3"))
+1
+BedrockModel — IAM 인증, 프로덕션 권장. 도구 선택·반복·완료를 판단하는 추론 엔진
+2
+모델 교체는 2줄 — tools·system_prompt 코드는 그대로
+3
+공식 15종 프로바이더 지원 — 상세는 PART 5
+
+Tools — 행동 능력
+모델이 호출할 수 있는 함수 목록 — 외부 세계와의 접점
+
+핵심 포인트
+@tool
+Python 함수를 그대로 도구로 등록하는 데코레이터
+docstring
+모델에게 전달되는 사용 설명서 — 구체적일수록 선택이 정확
+tools=[...]
+모델의 결정을 실제 행동으로 옮기는 접점
+확장
+카테고리별 빌트인 + MCP 연결 — 상세는 PART 4
+코드
+python
+
+from strands import Agent, tool
+
+# 함수에 @tool만 붙이면 모델이 호출 가능한 도구가 됨
+@tool
+def get_menu(restaurant_id: str) -> str:
+    """식당의 메뉴를 조회합니다."""
+    return f"{restaurant_id}: 수제 파스타, 화덕 피자"
+
+# 등록 — 모델이 선택할 수 있는 행동 목록
+agent = Agent(model=model, tools=[get_menu])
+
+System Prompt — 페르소나
+역할·규칙·응답 형식을 텍스트로 정의 — 가장 강력한 행동 제어 수단
+
+python
+
+agent = Agent(
+    model="us.anthropic.claude-sonnet-4-6",
+    # 1 페르소나 — 정체성·행동 규칙을 system 메시지로 전달
+    system_prompt="""당신은 AWS 비용 분석 전문가입니다.
+
+규칙:
+- 항상 get_cost_data 도구로 실제 데이터를 확인한 뒤 답변
+- 추측 금지 — 데이터 없으면 "확인 불가"로 답변
+- 금액은 USD 기준, 소수점 2자리까지
+
+출력 형식:
+- 서비스별 비용을 테이블로 정리
+- 전월 대비 증감률 포함""",
+    # 2 위 '규칙' 문장이 도구 사용 조건을 통제
+    tools=[get_cost_data, get_recommendations],
+)
+1
+정체성·행동 규칙 정의 — LLM의 system 메시지로 전달
+2
+도구 사용 조건·금지 사항을 문장으로 통제
+3
+구체적일수록 행동이 일관됨 — 규칙·출력 형식 명시 권장
+
+3줄 에이전트
+Model·Tools·System Prompt를 코드로 옮기면 — 그대로 동작하는 에이전트
+
+핵심 포인트
+model
+추론 엔진 — 도구 선택·반복·완료를 판단 (심화는 PART 5)
+tools
+모델이 선택할 수 있는 행동 목록 (심화는 PART 4)
+system_prompt
+역할·규칙·응답 형식 — 페르소나
+agent("질문")
+에이전틱 루프 시작 — 다음 파트의 주제
+코드
+python
+
+from strands import Agent
+from strands.models import BedrockModel
+from strands_tools import http_request
+
+# 에이전트 조립 — 모델 + 도구 + 시스템 프롬프트
+agent = Agent(
+    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-6"),
+    tools=[http_request],
+    system_prompt="GitHub API 도우미입니다. 한국어로 답변합니다.",
+)
+
+# 실행 — 질문 한 줄로 에이전틱 루프 시작
+result = agent("strands-agents/harness-sdk 저장소의 star 수는?")
+
+@tool 데코레이터
+Python 함수에 붙이면 에이전트가 호출 가능한 도구로 변환
+
+python
+
+from strands import tool
+
+# 1 @tool 데코레이터 — 함수를 도구로 변환
+@tool
+# 2 타입 힌트 — 파라미터 스키마 자동 생성
+def get_weather(city: str, unit: str = "celsius") -> dict:
+    # 3 docstring — 모델에게 전달되는 사용 설명서
+    """도시의 현재 날씨를 조회합니다.
+
+    사용자가 날씨를 물어볼 때 호출하세요.
+    city: 도시명 (예: "서울", "Tokyo")
+    unit: 온도 단위 — "celsius" 또는 "fahrenheit"
+    반환: {"temp": 22, "condition": "맑음"}
+    """
+    # 4 반환값 — 모델이 관찰하는 실행 결과
+    return {"temp": 22, "condition": "맑음"}
+1
+@tool 데코레이터 하나로 Python 함수가 에이전트 도구로 변환
+2
+타입 힌트 — 파라미터 스키마 자동 생성 (city: str, 기본값 지원)
+3
+docstring — 모델에게 전달되는 사용 설명서, 호출 시점 판단 근거
+4
+반환값 — 모델이 관찰하는 도구 실행 결과
+
+빌트인 도구 카테고리
+두 공급원 — SDK 코어 동봉 6종과 strands-agents-tools 카테고리별 확장
+
+핵심 포인트
+코어 동봉 6종
+bash · file_editor · http_request · notebook · sleep · stop — v1.50 이후 SDK 코어에 동봉, 별도 설치 없이 즉시 사용
+file_read · file_write · editor
+파일 — 로컬 파일 CRUD, 코드 편집
+http_request · retrieve
+네트워크 — REST API 호출, RAG 검색
+shell · python_repl
+시스템 — 명령 실행·코드 평가, 최소 권한으로 등록
+use_aws · calculator · current_time
+AWS·유틸 — AWS CLI 래핑, 계산, 시간
+코드
+python
+
+# 임포트 — 필요한 도구만 골라서
+from strands import Agent
+from strands_tools import file_read, http_request, current_time
+
+# 등록 — 리스트에 담으면 끝
+agent = Agent(tools=[file_read, http_request, current_time])
+
+MCPClient 연결
+외부 MCP(Model Context Protocol) 서버의 도구를 동적으로 로드
+
+python
+
+from strands import Agent
+from strands.tools.mcp import MCPClient
+from mcp import stdio_client, StdioServerParameters
+
+# 1 MCP 클라이언트 — transport callable로 stdio 서버 연결
+mcp = MCPClient(lambda: stdio_client(StdioServerParameters(
+    command="npx",
+    args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+)))
+
+# 2 연결 컨텍스트 — 서버 도구를 로드해 에이전트에 등록
+with mcp:
+    agent = Agent(
+        tools=mcp.list_tools_sync(),  # 3 MCP 서버 도구 자동 등록
+    )
+    result = agent("/tmp 디렉토리의 파일 목록을 보여줘")
+1
+MCPClient — transport callable로 stdio MCP 서버 연결
+2
+with 컨텍스트 — 연결 수명 관리, 블록 안에서만 도구 사용 가능
+3
+list_tools_sync() — 서버 도구를 조회해 Agent에 자동 등록
+4
+client_name — 서버에 전달되는 클라이언트 식별자 파라미터
+5
+load_servers() — 서버당 MCPClient를 만들어 반환하는 보조 API, 주 흐름은 서버별 인스턴스화
+
+BedrockModel 설정
+기본 프로바이더 — model_id 한 줄로 모델 교체
+
+설정 코드
+python
+
+from strands.models import BedrockModel
+
+# 기본 — model_id만 지정 (us. 접두어 = Cross-Region 추론 프로파일)
+model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-6")
+
+# 상세 설정 — 리전·생성 파라미터 제어
+model = BedrockModel(
+    model_id="us.anthropic.claude-sonnet-4-6",
+    region_name="us-west-2",
+    temperature=0.1,
+    max_tokens=4096,
+)
+
+# 조립 — 어떤 설정이든 Agent에는 model 하나로 전달
+agent = Agent(model=model, tools=[...])
+핵심 파라미터
+model_id
+추론 프로파일 ID — 파운데이션 모델 ARN이 아님
+region_name
+모델 가용 리전 (us-east-1 · us-west-2 등)
+temperature
+응답 무작위성 — 낮을수록 결정적
+max_tokens
+응답 길이 상한
+
+us.anthropic.claude-sonnet-4-6
+ㄴ 리전추론프로파일, 글로벌추론프로파일 (리전단위, 글로벌단위) → 꼭 알아두면 좋음
+
+Pydantic — 클래스가 곧 스키마 → 파이단틱 많이 쓰임 알아두면 좋음(클래스:햄버거의 세트/콤보/밀 옵션)
+파이썬의 사실상 표준 데이터 검증 라이브러리 — 타입 힌트 선언 하나로 검증과 JSON Schema를 동시에
+
+선언 · 검증 · 스키마 생성
+python
+
+from pydantic import BaseModel
+
+# 1 선언 — 클래스 필드의 타입 힌트가 곧 규격
+class Reservation(BaseModel):
+    name: str
+    party_size: int
+    time: str
+
+# 2 검증 — 규격에 맞으면 객체, 어긋나면 ValidationError
+ok = Reservation(name="트라토리아 벨라", party_size=4, time="19:00")
+Reservation(name="벨라", party_size="네 명", time="19:00")
+# → ValidationError: party_size는 정수여야 함
+
+# 3 클래스 선언이 그대로 JSON Schema
+Reservation.model_json_schema()
+# {"properties": {"name": {"type": "string"},
+#                 "party_size": {"type": "integer"}, ...},
+#  "required": ["name", "party_size", "time"]}
+에이전트 개발에서 만나는 곳
+한 번 배우면 계속 나온다
+Structured Output — 에이전트 응답을 스키마로 강제할 때의 선언부
+LLM 생태계 공통 — OpenAI SDK · LangChain · Instructor도 같은 방식
+파이썬 생태계 기반 — FastAPI 요청·응답 검증의 표준
+
+Structured Output → 파이단틱 입력/출력 다 쓰임
+에이전트의 답을 코드가 받을 때 — 자유 텍스트 대신 스키마로, 프로바이더 공통
+
+사용 코드
+python
+
+from pydantic import BaseModel
+from strands import Agent
+
+# 출력 스키마 정의 — Pydantic 모델이 곧 JSON Schema
+class RestaurantInfo(BaseModel):
+    name: str
+    cuisine: str
+    rating: float
+    price_won: int
+
+# 스키마 지정 호출 — structured_output_model로 스키마 전달
+agent = Agent(model="us.anthropic.claude-sonnet-4-6")
+result = agent("트라토리아 벨라 정보 알려줘", structured_output_model=RestaurantInfo)
+
+# 결과 접근 — 파싱 실패 없이 Pydantic 인스턴스로 수신
+report = result.structured_output
+# report.name == "트라토리아 벨라", report.rating == 4.5
+동작 흐름
+선언 → 전달 → 검증 → 객체
+스키마가 요청에 동봉되어 모델이 구조를 준수
+응답은 검증을 통과한 뒤 Pydantic 인스턴스로 반환 — 문자열 파싱 코드가 사라짐
+특정 모델 전용이 아닌 프로바이더 공통 기능
+
+핵심 요약
+1
+Strands Agents SDK 개요
+에이전트 3세대 진화 — Model-Driven, 모델이 도구 선택·실행·반복을 결정
+프레임워크 갈림길 — 코드 제어(Strands)·그래프(LangGraph)·프로토타입(CrewAI)·관리형(Bedrock Agents)
+4패키지 — 코어·tools·evals·TS SDK
+2
+Agent 구성
+Agent = Model + Tools + System Prompt
+Model만 필수 — Tools 없으면 채팅봇
+3줄 코드로 동작 — model·tools·system_prompt만 전달
+3
+에이전틱 루프
+Reason → Act → Observe 사이클을 목표 달성까지 반복
+자연 종료 — 모델이 도구 호출 없이 답하면 루프 종료
+limits로 반복 상한 — 초과 시 limit_turns
+4
+도구 생태계
+@tool 데코레이터로 Python 함수를 에이전트 도구로 즉시 변환
+빌트인 2공급원 — 코어 6종 + tools 확장
+MCPClient로 외부 MCP 서버 도구를 동적 연결
+5
+모델 프로바이더
+공식 15종+커뮤니티 10종 프로바이더
+BedrockModel이 기본, model_id 한 줄로 교체 가능
+프로바이더가 달라도 tools·system_prompt 코드는 불변
+6
+Structured Output
+Pydantic — 클래스 선언이 곧 JSON Schema와 검증
+structured_output_model로 스키마 준수 응답 — 검증된 타입 객체 수신
+특정 모델 전용이 아닌 프로바이더 공통
+
+MCP 아키텍처
+Host 안의 Client가 Server와 1:1로 연결되는 3계층
+ㄴ mcp 서버를 연결해서 쓰거나 mcp 서버를 만들어서 연결해서 쓰거나(만드는개념이 서버를 만들고 연결하는 개념임)
+
+연결 경로 ① — stdio
+Host가 서버를 자식 프로세스로 직접 실행 — 같은 머신 안에서 파이프로 통신
+ㄴ 내 컴퓨팅 자원 사용해서 실행
+
+연결 경로 ② — Streamable HTTP
+원격 서버에 URL로 연결 — 여러 클라이언트가 하나의 서버를 공유
+ㄴ 원경 자원 사용해서 실행
+
+코딩 에이전트에 연결 — Kiro · Claude Code
+실전 등록 절차 — 설정 파일을 여는 경로와 CLI 한 줄, 두 전송 모두 같은 창구
+
+① Kiro — 명령 팔레트로 mcp.json 열어 등록
+text
+
+1. 명령 팔레트 (Cmd/Ctrl + Shift + P)
+2. "Kiro: Open workspace MCP config (JSON)"
+   (사용자 전역은 user MCP config)
+3. mcp.json에 서버 추가
+   - 로컬:  "command" · "args"
+   - 원격:  "url" (+ "headers" 인증)
+4. 저장 — 워크스페이스 설정이 사용자 설정보다 우선
+② Claude Code — claude mcp add 한 줄
+bash
+
+# stdio — 로컬 서버 등록
+claude mcp add restaurant \
+    -- uvx restaurant-mcp-server
+
+# Streamable HTTP — 원격 서버 등록 + 인증 헤더
+claude mcp add --transport http restaurant \
+    https://mcp.example.com/mcp \
+    --header "Authorization: Bearer <YOUR_TOKEN>"
+
+2026-07-28 개정 — 무엇이 바뀌었나
+stateless 코어가 정식 릴리스 — 2025-11-25 대비 주요 변경과 12개월 이행 유예
+
+2025-11-25
+연결 수립
+initialize 핸드셰이크 + Mcp-Session-Id 세션
+서버→클라이언트 요청
+roots · sampling · elicitation 역방향 호출
+장기 작업
+tasks가 코어의 experimental 기능
+인증
+DCR 동적 클라이언트 등록
+현행 2026-07-28
+연결 수립
+핸드셰이크·세션 제거 — 요청마다 _meta 자기서술, 선택적 server/discover
+서버→클라이언트 요청
+MRTR — input_required 반환 → inputResponses 재시도
+장기 작업
+공식 확장 io.modelcontextprotocol/tasks — tasks/get · tasks/update
+인증
+CIMD 전환(DCR deprecated) + RFC 9207 iss 검증
+기존 서버는 당분간 그대로 동작합니다 — 방향만 새 스펙으로 정해졌습니다.
+Roots · Sampling · Logging과 구 HTTP+SSE 전송은 deprecated — 최소 12개월 유예 후 제거
+Tier 1 SDK(TypeScript · Python · Go · C#)는 릴리스와 동시에 새 스펙 지원 — 갈아탈 준비는 끝나 있습니다
+
+핵심 요약
+1
+생태계 개요
+세 방향 N×M 조합 폭발 — 도구·에이전트·사용자 연결마다 커스텀 통합
+"USB-C for AI" — 방향마다 표준 하나로 통일
+MCP(도구)·A2A(에이전트)·AG-UI(화면) — 경쟁이 아닌 상호 보완
+2
+MCP
+JSON-RPC 2.0 — Tools·Resources·Prompts 3종
+전송 2종: stdio(로컬) · Streamable HTTP(원격)
+업계 채택 → Agentic AI Foundation 기증(2025-12)
+draft 개정은 stateless 방향 — 핸드셰이크·세션 제거
+3
+A2A
+에이전트 간 태스크 위임 — Agent Card로 능력 발견
+Task 상태 6종 — submitted→working→completed…
+Google 발표 → v1.0(2026) → Linux Foundation
+4
+AG-UI
+에이전트 ↔ 프론트엔드 실시간 이벤트 스트리밍
+SSE 기반 typed 이벤트 — 메시지·도구 호출·상태 패치
+CopilotKit 개발 — Strands·LangGraph 프레임워크 무관
+5
+선택 가이드
+MCP 먼저 — 도구 연결이 가장 기본
+A2A — 독립 배포된 에이전트 간 위임이 필요할 때
+AG-UI — 사용자 앞에 에이전트를 노출할 때
+
+?, nacl
+stateful, stateless 알아둬야함 → 상태저장, 상태비저장
+ㄴ 예전엔 웹서버에서 정보 저장을 안해서 강제로 저장해뒀었는데(stateful) 클라우드에선 이게 좋지않음
+ㄴ 람다같은거 보면 15분밖에 지속을 안하니까 그 뒤엔 휘발됨
+ㄴ 클라우드에서 애플리케이션 만들땐 stateless로 만들어야함(서버를 가볍하기 위함)
+ㄴ 보안그룹이랑 NACL비교하는 문제 상시 출시(하는일은 둘다 방화벽) → 솔루션 아키텍트/보안
+ㄴ 보안그룹은 인스턴스, NACL은 서브넷
+
+에이전트 대화의 구조 — 턴 · 세션 · 기억
+메시지가 모여 턴, 턴이 모여 세션 — 그리고 그 전부를 기억하는 곳
+
+기억의 실체 — messages[]
+모델은 아무것도 기억하지 않음 — 매 턴, 지금까지의 대화 전체를 재전송
+
+이름의 실체 — 저장 · 길이 · 기억 · 조립
+각 이름이 Strands에서 실제로 가리키는 담당 매니저와 대상
+
+Session
+저장 — 대화 전체를 영속화·복원
+
+Conversation
+길이 — 쌓이는 대화 이력과 그 관리
+
+Memory
+기억 — 세션을 넘어 남는 사실과 선호
+
+Context
+조립 — 이번 호출에 실제로 들어가는 입력
+
+SessionManager
+STATE LAYER 1
+•
+대화 상태를 저장소에 자동 영속화하는 세션 계층 — 장착하면 저장과 복원이 자동
+•
+session_id 하나로 이전 대화를 되살림 — 재시작·재배포에도 대화가 이어집니다
+개발자가 save()를 호출하지 않습니다 — 장착만 하면 세션이 Agent를 따라다닙니다.
+📦
+저장 대상
+messages[] + state
+대화 이력과 agent.state를 매 턴 자동으로 함께 영속화
+🔑
+복원 키
+session_id
+같은 ID로 Agent를 재생성하면 이전 대화 자동 로드
+🗄️
+백엔드
+3종
+File · S3 · AgentCore Memory — 교체는 코드 한 줄
+
+세션 저장과 복원
+session_id 하나로 전체 대화 상태를 영속화·복원
+
+python
+
+from strands import Agent
+from strands.session import S3SessionManager
+
+# 1 장착 — session_id + S3 버킷으로 저장 위치 지정
+agent = Agent(session_manager=S3SessionManager(
+    session_id="user-123-reservation",
+    bucket="agent-sessions-bucket",
+))
+agent("강남에 오늘 저녁 2명 예약 가능한 이탈리안 찾아줘")
+
+# 2 복원 — 같은 session_id로 재생성하면 이전 대화 자동 로드
+agent2 = Agent(session_manager=S3SessionManager(
+    session_id="user-123-reservation",
+    bucket="agent-sessions-bucket",
+))
+agent2("아까 찾은 곳 중 트라토리아 벨라로 예약해줘")  # 3
+1
+장착 한 줄로 저장 자동 — save()를 호출하지 않음, 매 턴 messages[]와 agent.state가 함께 영속화
+2
+복원 키는 session_id — 같은 ID로 Agent를 다시 만들면 이전 대화가 그대로, S3 백엔드는 파일시스템 없는 Lambda·Fargate에서도 유지
+3
+이전 턴의 검색 결과를 기억한 채 이어서 응답 — 브라우저 새로고침·서버 재시작에도 대화가 계속
+
+messages[] 밖의 상태 — agent.state
+모델에게는 보이지 않지만, 세션과 함께 저장되는 key-value 상태
+
+핵심 포인트
+agent.state
+대화 밖 key-value 저장소 — 모델 컨텍스트에 전송되지 않음
+set / get
+카운터·플래그·사용자 메타데이터를 코드에서 직접 읽고 씀
+영속화
+SessionManager가 messages[]와 함께 저장·복원
+용도
+멤버 등급·예약 횟수·중간 결과처럼 모델이 몰라도 되는 값
+코드
+python
+
+from strands import Agent
+from strands.session import FileSessionManager
+
+mgr = FileSessionManager(session_id="user-123")
+agent = Agent(session_manager=mgr)
+
+# 모델 컨텍스트에 들어가지 않는 key-value 상태
+agent.state.set("member_grade", "vip")
+agent.state.set("reservation_count", 3)
+print(agent.state.get("member_grade"))  # "vip"
+
+# 세션 저장소에 messages[]와 함께 영속화 — 재생성해도 유지
+agent2 = Agent(session_manager=FileSessionManager(session_id="user-123"))
+print(agent2.state.get("reservation_count"))  # 3
+
+1턴짜리 주입 상태 — invocation_state
+호출할 때마다 밖에서 넣는 파라미터 봉투 — agent.state와 수명·방향이 다른 짝
+
+핵심 포인트
+invocation_state
+호출 파라미터로 주입하는 1턴짜리 상태 — 저장되지 않고 매 호출 재주입
+접근
+도구·훅에서 tool_context.invocation_state — 모델 컨텍스트에는 안 들어감
+agent.state와 차이
+수명(세션 vs 1턴)과 방향(내부에서 축적 vs 외부에서 주입)
+용도
+API 키 · user_id · 역할 — 호출자만 아는 비밀과 설정
+코드
+python
+
+from strands import Agent
+
+agent = Agent(
+    model="us.anthropic.claude-sonnet-4-6",
+    tools=[get_reservations],
+    session_manager=mgr,
+)
+
+# 호출 시 주입 — 이 턴에만 유효, 모델에게 보이지 않음
+result = agent(
+    "내 예약 보여줘",
+    invocation_state={"user_id": "user-123", "api_key": API_KEY},
+)
+
+# 도구·훅에서는 tool_context.invocation_state["user_id"]로 접근
+# 저장되지 않음 — 다음 호출에는 다시 주입해야 함
+
+ConversationManager
+대화 길이 관리 계층 — 모델에 보낼 messages[] 분량을 정책으로 결정
+
+SlidingWindow
+최근 N개 메시지만 유지 — 기본값
+
+Summarizing
+오래된 구간을 요약으로 압축
+
+NullConversationManager
+이력을 건드리지 않음
+
+패턴 3그룹
+Supervisor · Hierarchical — 파트 2
+흐름 제어
+Pipeline · Router — 파트 3
+분산 협업
+Swarm · Debate — 파트 4
+
+중앙 제어 패턴
+중앙 오케스트레이터가 위임과 통합을 책임지는 가장 예측 가능한 구조
+
+👑
+중앙 제어
+분해 · 배정 · 통합
+Supervisor
+요청 분석 → 위임 → 결과 수집 → 응답 합성
+Strands: Agents-as-Tools
+docstring이 위임 품질 결정
+Hierarchical
+Root → Mid → Worker 재귀 위임
+Strands: Agents-as-Tools 중첩
+
+흐름 제어 패턴
+순서 또는 분기 기준이 명확할 때 흐름을 구조로 고정하는 패턴군
+
+➡️
+흐름 제어
+흐름을 구조로 고정
+Pipeline
+직렬 처리, 이전 출력이 다음 입력 — ETL·문서 처리
+Strands: Workflow
+Router
+의도 분석 후 전문 에이전트로 분기
+
+분산 협업 패턴
+중앙 제어 없이 에이전트들이 스스로 판단하고 협업하는 자율성 최상위 패턴군
+
+🐝
+분산 협업
+자율성 최상위
+Swarm
+자율 핸드오프 — handoff_to_agent
+Strands: Swarm
+Debate
+Proposer · Critic · Verifier 토론 검증
+Blackboard
+공유 저장소 기반 — 6패턴 밖 보조 패턴
+
+핵심 요약
+1
+멀티에이전트 개요
+단일 에이전트 4대 한계 — 비대·희석·장애·디버깅
+설계 원칙 — 전문화·격리·관측 가능성·우아한 실패가 아키텍처 성패를 결정
+6가지 패턴을 2축(제어 방식 × 에이전트 자율성)으로 분류
+2
+중앙 제어 패턴
+Supervisor — 중앙 LLM이 분해·배정·통합
+Hierarchical — Supervisor 계층화로 병목 해소
+적합: 작업 분해가 명확하고 실행 순서가 정해진 경우
+3
+흐름 제어 패턴
+Pipeline — 직렬 처리, 이전 출력이 입력
+Router — 입력 분류 후 전문 에이전트로 분기
+적합: 태스크 유형이 명확히 구분되거나 순서가 고정된 경우
+4
+분산 협업 패턴
+Swarm — 에이전트가 자율적으로 핸드오프, 중앙 제어 없음
+Debate — 에이전트 간 논증·반론으로 답변 품질 향상
+적합: 동적 상황, 다양한 관점이 필요한 판단, 자율성이 높은 시스템
+
+IaC → 테라폼(가장유명한거)
+ㄴ 이걸 대신 해주는게 cdk?

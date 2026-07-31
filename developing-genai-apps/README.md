@@ -18,17 +18,20 @@ MCP 연결, 세션 영속화, Streamlit UI까지 하나의 앱으로 묶습니�
 
 ## 이론 정리
 
-| 노트 | 내용 |
-|---|---|
-| [`notes/agent-app-design.md`](./notes/agent-app-design.md) | 에이전트 앱에서 실제로 걸리는 것들 — 도구 조합, 서브프로세스 환경 의존, 세션 영속화의 함정, 스트리밍 조각, 맥락 참조, 재현성 |
+근거의 출처로 폴더가 갈립니다. 상세는 [`notes/README.md`](./notes)에 있습니다.
+
+| 폴더 | 근거 | 내용 |
+|---|---|---|
+| [`notes/lecture/`](./notes/lecture) | 강의 + AWS 공식 문서 대조 | Day 1 — 체인 vs 에이전트, 구성요소, ReAct/ReWoo, 도구 스키마, MCP 전송<br>Day 2 — 에이전틱 루프, 세션·상태·컨텍스트, 장기 기억, Strands SDK |
+| [`notes/practice/`](./notes/practice) | 실습에서 측정한 값 | `gangnam-dining-concierge` 트러블슈팅 8건에서 뽑은 설계 원칙 |
+| [`notes/_raw/`](./notes/_raw) | 수업 필기 원본 | 가공하지 않습니다 |
 
 API 시그니처는 노트에 적지 않습니다. Strands는 릴리스가 잦아 정적 문서가 빠르게
 낡으므로 `strands-agents` MCP 서버(`search_docs` / `fetch_doc`)나
-[llms.txt](https://strandsagents.com/llms.txt)로 조회합니다. 이 판단의 근거는
-`.kiro/skills/strands-agents/SKILL.md`에 있습니다.
+[llms.txt](https://strandsagents.com/llms.txt)로 조회합니다.
 
 `@tool`·Structured Output·모델 프로바이더 같은 API 수준 정리는 각 랩의
-`notes/`에 있고, 위 과정 노트는 그것들과 중복하지 않고 **설계 판단**만 다룹니다.
+`notes/`에 있습니다.
 
 ## 이 과정에서 얻은 것
 

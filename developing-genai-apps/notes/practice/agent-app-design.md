@@ -9,10 +9,10 @@ Strands는 릴리스가 잦아 정적 문서에 시그니처를 적으면 빠르
 
 | 주제 | 위치 |
 |---|---|
-| `@tool` 데코레이터 | [`labs/strands-basics/notes/tool-decorator.md`](../../labs/strands-basics/notes/tool-decorator.md) |
-| Structured Output (Pydantic) | [`labs/strands-basics/notes/structured-output.md`](../../labs/strands-basics/notes/structured-output.md) |
-| 모델 프로바이더 교체 | [`labs/strands-basics/notes/model-provider.md`](../../labs/strands-basics/notes/model-provider.md) |
-| MCP 클라이언트 연결 패턴 | [`labs/strands-mcp-client/notes/mcpclient-pattern.md`](../../labs/strands-mcp-client/notes/mcpclient-pattern.md) |
+| `@tool` 데코레이터 | [`labs/strands-basics/notes/tool-decorator.md`](../../../labs/strands-basics/notes/tool-decorator.md) |
+| Structured Output (Pydantic) | [`labs/strands-basics/notes/structured-output.md`](../../../labs/strands-basics/notes/structured-output.md) |
+| 모델 프로바이더 교체 | [`labs/strands-basics/notes/model-provider.md`](../../../labs/strands-basics/notes/model-provider.md) |
+| MCP 클라이언트 연결 패턴 | [`labs/strands-mcp-client/notes/mcpclient-pattern.md`](../../../labs/strands-mcp-client/notes/mcpclient-pattern.md) |
 
 표기: `[실측]` 실습에서 확인한 것 / `[해석]` 그것을 놓고 내린 판단.
 
@@ -117,7 +117,7 @@ args=["review_server.py"])`로 띄우고 있었고 두 가지가 깨졌다.
 
 같은 이유로, 판정을 모델에 맡기면 게이트가 재현 불가능해진다. 이 리포의 보안
 에이전트가 판정을 결정론적 스크립트로 분리한 근거와 같다
-([`agents/README.md`](../../agents/README.md) 원칙 5).
+([`agents/README.md`](../../../agents/README.md) 원칙 5).
 
 ---
 
@@ -125,7 +125,7 @@ args=["review_server.py"])`로 띄우고 있었고 두 가지가 깨졌다.
 
 | 항목 | 출처 |
 |---|---|
-| 위 실측 전부 | [`gangnam-dining-concierge/README.md`](../gangnam-dining-concierge/README.md) 설계 결정과 트러블슈팅 8건 |
+| 위 실측 전부 | [`gangnam-dining-concierge/README.md`](../../gangnam-dining-concierge/README.md) 설계 결정과 트러블슈팅 8건 |
 | Strands API 시그니처 | 정적 문서에 적지 않는다. `strands-agents` MCP의 `search_docs`/`fetch_doc` 또는 https://strandsagents.com/llms.txt |
 
 ## 확인하지 못한 것

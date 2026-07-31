@@ -74,7 +74,7 @@ AI 에이전트가 실행한 도구 결과를 근거로 정리했으며, 판단�
 - [`notes/challenge-tasks.md`](./notes/challenge-tasks.md) — 추가 과제 메모
 
 과정 수준의 설계 판단 정리는
-[`developing-genai-apps/notes/agent-app-design.md`](../../developing-genai-apps/notes/agent-app-design.md)에
+[`developing-genai-apps/notes/practice/agent-app-design.md`](../../developing-genai-apps/notes/practice/agent-app-design.md)에
 있습니다. 이 폴더의 노트는 API 수준, 그쪽은 앱을 만들 때의 판단을 다룹니다.
 
 ## 검증 결과

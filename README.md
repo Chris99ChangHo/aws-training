@@ -44,7 +44,9 @@ aws-training/
 ├── generative-ai-essentials/           <- 과정
 │   ├── README.md
 │   ├── notes/                          이론 정리
-│   │   └── _raw/                       수업 필기 원본 (가공하지 않음)
+│   │   ├── _raw/                       수업 필기 원본 (가공하지 않음)
+│   │   ├── lecture/                    강의 정리
+│   │   └── practice/                   실습에서 도출한 정리
 │   └── seoul-travel-planner-kb/        실습
 ├── security-engineering/
 ├── developing-genai-apps/

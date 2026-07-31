@@ -157,7 +157,6 @@ python3 tests/test_gate.py          # SARIF 병합 + 게이트 + 무결성 34 �
 python3 tests/test_mcp_server.py    # MCP 프로토콜 + 인자 검증 19 케이스
 ```
 
-
 ## nuclei 설치 후 확인 (DAST)
 
 ```bash

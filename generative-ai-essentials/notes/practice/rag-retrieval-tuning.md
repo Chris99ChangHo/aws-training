@@ -153,7 +153,7 @@ store configurations, only `SEMANTIC` search is available.**"
 |---|---|
 | `overrideSearchType`의 HYBRID/SEMANTIC 의미와 벡터 스토어 제약 | [KnowledgeBaseVectorSearchConfiguration](https://docs.aws.amazon.com/sdk-for-ruby/v3/api/Aws/Bedrock/Types/KnowledgeBaseVectorSearchConfiguration.html) |
 | OpenSearch Serverless OCU·과금 구조 | [OpenSearch Service 요금](https://aws.amazon.com/opensearch-service/pricing/) |
-| 실측값 | [`seoul-travel-planner-kb/README.md`](../seoul-travel-planner-kb/README.md), [`restaurant-concierge-rag/README.md`](../restaurant-concierge-rag/README.md) 검증 결과 요약 |
+| 실측값 | [`seoul-travel-planner-kb/README.md`](../../seoul-travel-planner-kb/README.md), [`restaurant-concierge-rag/README.md`](../../restaurant-concierge-rag/README.md) 검증 결과 요약 |
 
 ## 확인하지 못한 것
 

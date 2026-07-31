@@ -101,8 +101,9 @@ FAIL하고, 전부 `labs/agentcore-setup/`의 생성 락파일이라 여기서 �
 
 ```
 notes/_raw/      수업 필기 원본. 가공하지 않습니다
-notes/lecture/   강의 정리. 필기가 근거입니다
-notes/*.md       실습에서 도출한 정리. 측정이 근거입니다
+notes/lecture/   강의 정리. 필기 + AWS 공식 문서 대조가 근거입니다
+notes/practice/  실습에서 도출한 정리. 측정이 근거입니다
+notes/README.md  색인 — 어떤 노트가 무슨 근거인지
 ```
 
 정리본에는 `[실측]`·`[문서]`·`[해석]`으로 근거를 표시합니다. **필기에 없던
