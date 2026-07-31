@@ -1,0 +1,4 @@
+Local Semgrep rules go here. run_sast.sh adds this directory to --config when
+it holds anything other than this file, so an empty rules/ is not an error.
+Keeping the directory in version control makes the extension point discoverable
+instead of something you have to read the wrapper to find out about.

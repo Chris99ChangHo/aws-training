@@ -1,0 +1,88 @@
+# This file intentionally uses TOML, not YAML.
+# Python's standard library ships a TOML parser (tomllib, 3.11+) but no YAML
+# parser, so TOML keeps the build step dependency-free.
+
+[agent]
+name = "generic-sec-agent"
+description = """\
+Vendor-agnostic security specialist. Performs STRIDE threat modeling, SAST \
+code review, dependency/container SCA, and scoped DAST using open-source \
+scanners. Every finding ships with a reproducible path and remediation code. \
+Use for security review, threat modeling, or vulnerability triage."""
+prompt_file = "SYSTEM_PROMPT.md"
+welcome = "Generic Security Agent ready. Scans emit SARIF; DAST is limited to .sec-scope."
+
+# Harness-specific model identifiers. This is one of only two places where
+# vendor names appear in the neutral source; keeping them here rather than in
+# the adapters means the adapters stay fully generated.
+[model]
+kiro = "claude-opus-5"
+claude_code = "opus"
+codex = "gpt-5.6"
+
+# Neutral capability names. build.py maps these onto each harness's tool names.
+[capabilities]
+read_files = true
+write_files = true
+run_shell = true
+search_code = true
+fetch_web = false          # a security agent has no reason to fetch arbitrary URLs
+
+# Auto-approved: read-only, no side effects outside the workspace.
+auto_approve = ["read_files", "search_code"]
+
+[shell]
+# Commands the agent may run without asking. Anchored at both ends by build.py.
+# Only the wrapper scripts and a few read-only inspection commands.
+#
+# `{lab}` expands to this agent's path relative to the workspace root. Write it
+# explicitly: an earlier version of build.py guessed "contains a slash means
+# lab-relative", which silently prefixed the git rule too, because the slash in
+# its argument character class looked like a path separator. The rule then
+# matched nothing. Intent belongs in the source, not in a heuristic.
+auto_approve_commands = [
+    "{lab}/scanners/preflight\\.sh",
+    "{lab}/scanners/run_sast\\.sh( [A-Za-z0-9._/-]+)?",
+    "{lab}/scanners/run_sca\\.sh( [A-Za-z0-9._/-]+)?",
+    "{lab}/gate/merge_sarif\\.py( [A-Za-z0-9._/-]+)*",
+    "{lab}/gate/gate\\.py( [A-Za-z0-9._/=-]+)*",
+    "git (status|diff|log)( [A-Za-z0-9._/-]+)*",
+]
+
+# Always denied, regardless of any allow rule. Deny is evaluated first in both
+# harnesses. These are a coarse backstop; guard_scope.sh is the real control
+# because it parses the command instead of pattern-matching the raw string.
+deny_commands = [
+    ".*[;&|`].*",              # command chaining / substitution
+    ".*\\$\\(.*",              # command substitution
+    ".*\\b(sudo|su|doas)\\b.*",
+    ".*\\brm\\b.*",
+    ".*\\b(dd|mkfs|shred|truncate)\\b.*",
+    ".*\\bchmod\\s+777\\b.*",
+    ".*(\\.aws/|\\.ssh/|\\.env|id_rsa|id_ed25519|credentials).*",
+    ".*\\b(curl|wget)\\b.*",   # no outbound exfiltration path
+    ".*\\b(nuclei|nmap|zap|zap\\.sh|sqlmap|nikto)\\b.*",  # DAST: human approves
+]
+
+[hooks]
+# PreToolUse gate. Receives the pending tool call as JSON on stdin and blocks
+# with exit code 2. This is what makes DAST scope enforceable: the hook parses
+# the target out of the command and compares it to .sec-scope, which a regex
+# in an allow-list cannot do.
+pre_tool_use = "scanners/guard_scope.sh"
+spawn = "scanners/preflight.sh"
+
+[scanners]
+sast = "semgrep"
+sca = "trivy"
+dast = "nuclei"
+report_format = "sarif"     # OASIS SARIF 2.1.0
+
+[gate]
+# Tier 3: deterministic CI gating. No LLM involved in this decision.
+fail_on_severity = "high"    # fail the build at this level or above
+max_allowed = 0
+
+[mcp]
+server_name = "sec-scanners"
+server_command = "mcp/server.py"

@@ -1,0 +1,37 @@
+{
+  "$generated": "GENERATED FILE - do not edit. Source: agents/security/agent/(SYSTEM_PROMPT.md + manifest.toml). Regenerate with python3 agents/security/adapters/build.py",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob"
+    ],
+    "deny": [
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh agents/security/scanners/guard_scope.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh agents/security/scanners/preflight.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

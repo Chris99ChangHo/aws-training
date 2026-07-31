@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Trivy",
+          "informationUri": "https://github.com/aquasecurity/trivy",
+          "rules": [
+            {
+              "id": "CVE-2021-44228",
+              "name": "LanguageSpecificPackageVulnerability",
+              "shortDescription": { "text": "log4j: remote code execution" },
+              "defaultConfiguration": { "level": "error" },
+              "properties": { "security-severity": "10.0", "tags": ["vulnerability"] }
+            },
+            {
+              "id": "CVE-2023-45853",
+              "name": "OsPackageVulnerability",
+              "shortDescription": { "text": "zlib: integer overflow" },
+              "defaultConfiguration": { "level": "error" },
+              "properties": { "security-severity": "7.5", "tags": ["vulnerability"] }
+            },
+            {
+              "id": "AVD-AWS-0088",
+              "name": "Misconfiguration",
+              "shortDescription": { "text": "S3 bucket has no encryption configured" },
+              "defaultConfiguration": { "level": "warning" },
+              "properties": { "security-severity": "3.4", "tags": ["misconfiguration"] }
+            },
+            {
+              "id": "no-severity-metadata",
+              "name": "SecretDetection",
+              "shortDescription": { "text": "Rule with no security-severity at all" },
+              "properties": { "tags": ["secret"] }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CVE-2021-44228",
+          "level": "error",
+          "message": { "text": "Package: org.apache.logging.log4j:log4j-core" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "pom.xml" },
+                "region": { "startLine": 31 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "CVE-2023-45853",
+          "level": "error",
+          "message": { "text": "Package: zlib1g" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "usr/lib/zlib1g" },
+                "region": { "startLine": 1 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "AVD-AWS-0088",
+          "level": "warning",
+          "message": { "text": "Bucket does not have encryption enabled" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "infra/s3.tf" },
+                "region": { "startLine": 12 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "no-severity-metadata",
+          "level": "warning",
+          "message": { "text": "falls through to the level-based mapping" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "deploy/secrets.yaml" },
+                "region": { "startLine": 3 }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

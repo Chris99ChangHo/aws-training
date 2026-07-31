@@ -1,0 +1,21 @@
+# Runtime dependencies: none.
+#
+# The gate, the MCP server and the adapter generator use only the Python
+# standard library. This is deliberate rather than minimalist posturing:
+#
+#   - The MCP server is the first thing a CI runner has to start before it can
+#     scan anything. "pip install" is an extra failure mode on that path, and
+#     wheels for a very new interpreter are not always available. This lab runs
+#     on Python 3.14.6, where that is a live concern.
+#   - The manifest is TOML rather than YAML because tomllib is in the standard
+#     library from Python 3.11 and there is no stdlib YAML parser.
+#
+# Python 3.11 or newer is required, for tomllib.
+#
+# The security scanners themselves are external programs, not Python packages.
+# See docs/setup-sec-tools.md for pinned installation commands.
+#
+# Verification-only, and not needed to run anything here:
+#   pyyaml   to re-check that the generated Claude Code frontmatter is valid
+#            YAML. Install it in a throwaway virtualenv rather than adding it
+#            to this file.

@@ -1,0 +1,54 @@
+# GENERATED FILE - do not edit. Source: agents/security/agent/(SYSTEM_PROMPT.md + manifest.toml). Regenerate with python3 agents/security/adapters/build.py
+
+model = "gpt-5.6"
+
+# on-request keeps a human in the loop for anything the sandbox would
+# otherwise escalate. Active-scan tools are refused by the hook, but the
+# approval prompt is the layer that catches whatever the hook misses.
+approval_policy = "on-request"
+
+# An OS-level sandbox, which is a stronger control than the hook's
+# denylist. Codex is the only one of the three harnesses that offers it.
+sandbox_mode = "workspace-write"
+
+# Capability fetch_web is false in the neutral manifest. Hosted tools
+# such as web search do not go through the local hook path, so turning
+# the tool off is the only way to enforce that.
+web_search = "disabled"
+
+[features]
+hooks = true
+
+[mcp_servers.sec-scanners]
+command = "python3"
+args = ["agents/security/mcp/server.py"]
+
+# Report scanner availability when the session starts, so a missing
+# tool is never mistaken for a clean scan.
+[[hooks.SessionStart]]
+matcher = "startup|resume"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = 'sh "$(git rev-parse --show-toplevel)/agents/security/scanners/preflight.sh"'
+timeout = 30
+statusMessage = "Checking scanner availability"
+
+# The security guard. Codex blocks on exit code 2 with the reason on
+# stderr, which is the same contract Claude Code documents, so the same
+# script serves both unchanged.
+#
+# apply_patch is matched alongside Bash because Codex routes file edits
+# through it, and an edit is how a credential file would be written.
+[[hooks.PreToolUse]]
+matcher = "^(Bash|apply_patch)$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = 'sh "$(git rev-parse --show-toplevel)/agents/security/scanners/guard_scope.sh"'
+timeout = 30
+statusMessage = "Checking command against security policy"
+
+# Codex requires a human to review and trust a non-managed command hook
+# before it runs. Run /hooks in the CLI after generating this file, or
+# the guard is configured but inert. Agent: generic-sec-agent

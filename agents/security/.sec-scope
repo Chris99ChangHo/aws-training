@@ -1,0 +1,23 @@
+# DAST authorization scope.
+#
+# guard_scope.sh reads this file and blocks any active-scan command whose
+# target is not listed here. One entry per line; blank lines and lines
+# starting with # are ignored.
+#
+# Accepted entry forms:
+#   127.0.0.1          exact IPv4 literal
+#   localhost          exact hostname
+#   app.example.test   exact hostname
+#
+# Matching is exact and case-insensitive on the host portion only. A URL
+# target such as http://localhost:8080/login matches the entry "localhost".
+# There is no wildcard support: a wildcard in an authorization boundary is
+# how out-of-scope hosts get scanned by accident.
+#
+# Only add a host you can demonstrate you are authorised to test. Active
+# scanning of third-party infrastructure is unlawful in most jurisdictions.
+# The agent is instructed never to edit this file — a human must.
+
+localhost
+127.0.0.1
+::1

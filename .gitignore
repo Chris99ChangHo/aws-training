@@ -25,6 +25,16 @@ credentials.json
 # 대화 세션 저장 산출물 (대화 히스토리, 개인 취향 등 포함)
 **/sessions/
 
+# 보안 스캔 산출물 (SARIF)
+# 절대 경로, 코드 스니펫, 스캐너가 탐지한 시크릿 후보 값이 그대로 담긴다.
+# 테스트 픽스처는 합성 데이터이므로 커밋한다.
+**/*.sarif
+!**/tests/fixtures/*.sarif
+**/reports/
+
+# Claude Code 로컬 설정 (개인 권한 오버라이드)
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
