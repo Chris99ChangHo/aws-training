@@ -1,9 +1,9 @@
 # MCP 연동 — stdio / streamable-http 트랜스포트
 
-![Python](https://img.shields.io/badge/Python-3.14-blue?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![Strands Agents](https://img.shields.io/badge/Strands_Agents-1.50-4B32C3)
 ![MCP](https://img.shields.io/badge/MCP-1.29-000000)
-![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Bedrock-01A88D)
 
 MCP(Model Context Protocol) 서버를 직접 만들고, Strands 에이전트가 두 가지
 트랜스포트(stdio, streamable-http)로 그 서버의 도구를 사용하도록 연결한

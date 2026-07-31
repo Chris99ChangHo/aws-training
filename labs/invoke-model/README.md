@@ -1,8 +1,8 @@
 # Bedrock InvokeModel — 제공자별 네이티브 포맷과 미디어 생성
 
-![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logo=amazonaws&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.14-blue?logo=python&logoColor=white)
-![boto3](https://img.shields.io/badge/boto3-1.43-232F3E?logo=amazonaws&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Bedrock-01A88D)
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
+![boto3](https://img.shields.io/badge/boto3-1.43-232F3E)
 ![Meta Llama](https://img.shields.io/badge/Meta-Llama_4_Scout-0467DF?logo=meta&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/Anthropic-Claude_Sonnet_4.6-191919?logo=anthropic&logoColor=white)
 

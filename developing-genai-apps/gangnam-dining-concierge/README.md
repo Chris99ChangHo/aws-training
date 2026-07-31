@@ -1,7 +1,7 @@
 # 강남 다이닝 컨시어지
 
-![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logo=amazonaws&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Bedrock-01A88D)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Strands Agents](https://img.shields.io/badge/Strands_Agents-1.48-4B32C3)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.51-FF4B4B?logo=streamlit&logoColor=white)
 ![FastMCP](https://img.shields.io/badge/FastMCP-3.4-6E56CF)

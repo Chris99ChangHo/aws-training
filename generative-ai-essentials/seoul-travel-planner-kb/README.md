@@ -1,10 +1,10 @@
 # 서울 여행 플래너 — Amazon Bedrock Knowledge Base 실습
 
-![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Bedrock-01A88D)
 ![OpenSearch](https://img.shields.io/badge/OpenSearch-Serverless-005EB8?logo=opensearch&logoColor=white)
-![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-FF9900?logoColor=white)
-![Amazon S3](https://img.shields.io/badge/Amazon-S3-569A31?logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-ED7100)
+![Amazon S3](https://img.shields.io/badge/Amazon-S3-7AA116)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.51-FF4B4B?logo=streamlit&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/Anthropic-Claude_Sonnet_4.6-191919?logo=anthropic&logoColor=white)
 ![Cohere Rerank](https://img.shields.io/badge/Cohere-Rerank-39594D)

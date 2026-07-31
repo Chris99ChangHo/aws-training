@@ -1,7 +1,7 @@
 # Strands Agents 기초 — 도구·멀티턴·관찰성
 
-![AWS](https://img.shields.io/badge/AWS-Bedrock-orange?logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.14-blue?logo=python&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Bedrock-01A88D)
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![Strands Agents](https://img.shields.io/badge/Strands_Agents-1.50-4B32C3)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.60-FF4B4B?logo=streamlit&logoColor=white)
 ![Pydantic](https://img.shields.io/badge/Pydantic-2.13-E92063?logo=pydantic&logoColor=white)

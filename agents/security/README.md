@@ -1,15 +1,15 @@
 # Generic Security Agent
 
-![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/runtime_deps-none-brightgreen)
 ![SARIF](https://img.shields.io/badge/SARIF-2.1.0_(OASIS)-informational)
-![Semgrep](https://img.shields.io/badge/Semgrep-SAST-1B2F3D?logo=semgrep&logoColor=white)
-![Trivy](https://img.shields.io/badge/Trivy-SCA_·_IaC-1904DA)
+![Semgrep](https://img.shields.io/badge/Semgrep-SAST-1B2F3D)
+![Trivy](https://img.shields.io/badge/Trivy-SCA_·_IaC-1904DA?logo=trivy&logoColor=white)
 ![Nuclei](https://img.shields.io/badge/Nuclei-DAST-3E8EDE)
 ![MCP](https://img.shields.io/badge/MCP-stdio_JSON--RPC-000000)
 ![Kiro CLI](https://img.shields.io/badge/Kiro_CLI-adapter-FF9900)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-adapter-D97757?logo=anthropic&logoColor=white)
-![Codex CLI](https://img.shields.io/badge/Codex_CLI-adapter-412991?logo=openai&logoColor=white)
+![Codex CLI](https://img.shields.io/badge/Codex_CLI-adapter-412991)
 
 특정 클라우드 벤더에도, 특정 AI 에이전트 하네스에도 종속되지 않는 보안
 에이전트. STRIDE 위협 모델링, SAST, SCA, DAST를 오픈소스 스캐너로 수행하고,
