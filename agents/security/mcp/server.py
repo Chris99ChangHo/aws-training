@@ -35,7 +35,6 @@ Run standalone for a protocol smoke test:
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -44,7 +43,7 @@ from typing import Any
 
 LAB_ROOT = Path(__file__).resolve().parent.parent
 SCANNERS = LAB_ROOT / "scanners"
-GATE_DIR = LAB_ROOT.parent / "core" / "gate"
+GATE_DIR = LAB_ROOT / "gate"
 SCOPE_FILE = LAB_ROOT / ".sec-scope"
 
 SERVER_NAME = "sec-scanners"
@@ -255,9 +254,6 @@ def check_arg(value: Any, label: str) -> str:
 
 def execute(argv: list[str]) -> tuple[int, str]:
     """Run a wrapper and return (exit code, combined output)."""
-    # The shared gate in agents/core cannot infer which agent it serves from
-    # its own path, so name it explicitly rather than relying on cwd.
-    env = {**os.environ, "AGENT_ROOT": str(LAB_ROOT)}
     try:
         proc = subprocess.run(  # noqa: S603 - argv list, never shell=True
             argv,
@@ -265,7 +261,6 @@ def execute(argv: list[str]) -> tuple[int, str]:
             text=True,
             timeout=TIMEOUT_SECONDS,
             cwd=str(LAB_ROOT),
-            env=env,
             check=False,
         )
     except FileNotFoundError as exc:

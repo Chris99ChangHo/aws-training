@@ -38,33 +38,15 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-def resolve_agent_root() -> Path:
-    """Return the agent folder this run belongs to.
-
-    The gate is shared by more than one agent, so it cannot derive the agent
-    from its own location the way it did when it lived inside one. Identity
-    comes from outside: `AGENT_ROOT` if set, otherwise the current directory,
-    which is what the documented usage (`cd agents/<domain>`) produces.
-
-    Resolution is deliberately not silent about failure -- an agent folder is
-    recognised by holding `agent/manifest.toml`, and if neither candidate does,
-    the caller finds out from `main()` instead of getting a permissive default.
-    """
-    override = os.environ.get("AGENT_ROOT")
-    if override:
-        return Path(override).resolve()
-    return Path.cwd().resolve()
-
-
-AGENT_ROOT = resolve_agent_root()
+LAB_ROOT = Path(__file__).resolve().parent.parent
 
 # Honour the same environment override the scanner wrappers use
 # (scanners/_lib.sh). Without this, setting SEC_REPORT_DIR moved where the
 # scanners wrote but not where the gate read, so the gate silently evaluated a
 # stale report from the default directory.
-REPORT_DIR = Path(os.environ.get("SEC_REPORT_DIR") or AGENT_ROOT / "reports")
+REPORT_DIR = Path(os.environ.get("SEC_REPORT_DIR") or LAB_ROOT / "reports")
 DEFAULT_REPORT = REPORT_DIR / "merged.sarif"
-MANIFEST = AGENT_ROOT / "agent" / "manifest.toml"
+MANIFEST = LAB_ROOT / "agent" / "manifest.toml"
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -180,17 +162,6 @@ def severity_of(result: dict[str, Any], rules: dict[str, dict[str, Any]]) -> str
         return severity
 
     return "medium"
-
-
-def agent_label() -> str:
-    """Return a display name for the agent this run belongs to.
-
-    Taken from the agent's folder name, which is the one identifier that is
-    always present and already required to be a single domain word
-    (agent-conventions rule 7). The manifest's `agent.name` is the adapter
-    identity ("generic-sec-agent") and reads badly as a heading.
-    """
-    return AGENT_ROOT.name.capitalize() or "Deterministic"
 
 
 def load_manifest_defaults() -> tuple[str, int]:
@@ -338,12 +309,8 @@ def render(
     blocking: int,
 ) -> None:
     """Print the human-readable verdict."""
-    # The gate is shared, so the heading names the agent it ran for rather than
-    # hardcoding "Security". A wrong label on a build verdict is a real cost:
-    # it sends someone reading CI output to the wrong owner.
-    title = f"{agent_label()} gate"
-    print(title)
-    print("-" * len(title))
+    print("Security gate")
+    print("-------------")
     print(f"threshold   : {fail_on} or above")
     print(f"budget      : {max_allowed}")
     print()

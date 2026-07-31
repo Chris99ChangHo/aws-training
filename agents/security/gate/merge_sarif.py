@@ -26,12 +26,9 @@ from typing import Any
 # Resolve paths from this file, not the caller's cwd: the wrappers, the MCP
 # server and CI all invoke this from different working directories.
 # SEC_REPORT_DIR is honoured so this agrees with scanners/_lib.sh and gate.py
-# about where reports live. AGENT_ROOT names the agent this run belongs to:
-# once the gate became shared code it could no longer infer the agent from its
-# own location, so identity is passed in and cwd is the documented fallback
-# (`cd agents/<domain>`).
-AGENT_ROOT = Path(os.environ.get("AGENT_ROOT") or Path.cwd()).resolve()
-DEFAULT_REPORT_DIR = Path(os.environ.get("SEC_REPORT_DIR") or AGENT_ROOT / "reports")
+# about where reports live.
+LAB_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_REPORT_DIR = Path(os.environ.get("SEC_REPORT_DIR") or LAB_ROOT / "reports")
 DEFAULT_OUTPUT = DEFAULT_REPORT_DIR / "merged.sarif"
 
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"

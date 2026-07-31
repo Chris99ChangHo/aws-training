@@ -4,13 +4,8 @@
 것인지 정리한 문서다. 실습 README는 "무엇을 왜 했는지"를 다루고, 이 문서는
 "그 판단의 근거가 되는 표준이 무엇이고 어디에 쓰여 있는지"를 다룬다.
 
-**범위**: 1·2·4·5·7장은 **보안 에이전트 전용**이다. 3장(CWE·CVSS·**SARIF**)은
-**계열 공통**이다 — SARIF는 `agents/core/gate`가 읽는 형식이므로 devops
-에이전트도 같은 계약을 따른다. 계열이 왜 두 에이전트로 갈리는지는
-[`agent-boundaries.md`](./agent-boundaries.md)에 있다.
-
-> 파일명이 원래 `devsecops-standards.md`였다. "DevSecOps"가 devops 에이전트의
-> 문서로 읽혀서(실제로 그렇게 오해됐다) `security-standards.md`로 바꿨다.
+> 파일명이 원래 `devsecops-standards.md`였다. "DevSecOps"가 DevOps 쪽 문서로
+> 읽혀서(실제로 그렇게 오해됐다) `security-standards.md`로 바꿨다.
 
 모든 표준은 공식 문서를 조회해 확인했고 원문 링크를 달았다. 확인하지 못한
 것은 그렇게 표시했다.

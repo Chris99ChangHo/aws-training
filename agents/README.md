@@ -15,24 +15,44 @@ AWS가 만들어 제공하는 에이전트를 해체해서, **특정 클라우�
 | 에이전트 | 원본 | 상태 | 내용 |
 |---|---|---|---|
 | [`security/`](./security) | AWS Security Agent | 동작 (테스트 173) | STRIDE 위협 모델링, SAST/SCA/DAST, SARIF 결정론적 게이트 |
-| [`devops/`](./devops) | AWS DevOps Agent | 동작 (테스트 64, 어댑터 미구현) | IaC·컨테이너·파이프라인 린트, "plan은 되고 apply는 안 된다" 가드 |
 
-## 공유 코드
+## 폐기한 시도 — DevOps 에이전트
 
-| 위치 | 내용 | 추출 시점 |
-|---|---|---|
-| [`core/gate/`](./core/gate) | `merge_sarif.py`, `gate.py` — SARIF 병합과 결정론적 판정 | devops가 같은 게이트를 필요로 한 시점. 원칙 3의 "소비자 2개" 충족 |
+두 번째 에이전트로 DevOps를 만들다가 **폐기했다.** 기록으로 남기는 이유는
+판단 근거가 다음 결정에 쓰이기 때문이다.
 
-공유 게이트는 자기 위치로 어느 에이전트를 위해 도는지 알 수 없으므로
-`AGENT_ROOT`로 정체성을 받는다. 이 결함은 추출이 드러냈다 — 옮기기 전에는
-`__file__` 기준으로 리포트 디렉토리와 manifest를 찾고 있었다.
+**1. 첫 계층이 security의 사본이었다.** IaC 스캔을 devops의 일로 보고
+`trivy config`를 호출했는데, 같은 픽스처에서 security의 `run_sca.sh`와 rule
+ID 13개가 전부 겹쳤다(security 전용 0건, devops 전용 0건). security가 이미
+`trivy fs --scanners vuln,secret,misconfig`를 돌고 있었기 때문이다. 파일
+종류(`.tf`, `.yaml`)로 소유권을 나눈 것이 원인이었다 — **파일은 경계가 아니다.**
+
+**2. 겹치지 않는 검사만 남기니 범위가 작아졌다.** Trivy 출력을 실측해 이미
+보고되는 항목(리소스 limits `KSV-0011/15/16/18`, 이미지 태그 `KSV-0013`,
+Dockerfile `HEALTHCHECK` `DS-0026`, 모든 `securityContext`)을 빼고 나면
+운영 준비도 8개(state 락, 버전 고정, probe, replica, 롤백 경로, 파이프라인
+재현성)가 남았다. 동작하고 테스트도 통과했지만, 원본과의 격차에 비해 결과물이
+얇았다.
+
+**3. AWS 원본과 성격이 달랐다.** AWS DevOps Agent는 5개 축 21개 기능이고 본질이
+**라이브 프로덕션 텔레메트리 기반 SRE**다 — PagerDuty·ServiceNow에서 조사 착수,
+텔레메트리+코드+배포 상관 root cause 분석, 과거 인시던트에서 학습.
+CloudWatch·Datadog·Splunk 연동이 전제다. 내가 만든 것은 리포 파일 정적 검사이고
+21개 중 1개를 부분 구현한 수준이었다. security는 원본이 리포 코드를 보는 일이
+많아 재현 가능했지만, DevOps는 관측성 스택 없이는 성립하지 않는다.
+
+→ 결론: 얇은 두 번째 에이전트보다 **security 하나의 완성도**가 낫다고 판단해
+`agents/devops/`를 삭제했다. 히스토리에는 남아 있다(`b51f1ef` 이전).
+
+부수 효과로 `agents/core/gate/` 추출도 되돌렸다. 소비자가 하나로 돌아가면
+원칙 3에 어긋나고, 공유 때문에 넣은 `AGENT_ROOT` 우회로(cwd 폴백)가 조용히
+틀릴 수 있는 함정으로만 남는다.
 
 ## 공통 문서
 
 | 문서 | 내용 |
 |---|---|
-| [`docs/agent-boundaries.md`](./docs/agent-boundaries.md) | **어떤 검사가 어느 에이전트의 일인가.** 두 에이전트가 실제로 겹쳤던 실측 기록과, 다음에 겹치지 않게 하는 5단계 절차 |
-| [`docs/security-standards.md`](./docs/security-standards.md) | SAST/SCA/DAST 구분, STRIDE, CWE·CVSS·SARIF, 보안 설계 원칙 ↔ 코드 매핑, NIST SSDF. 1·2·4·5·7장은 security 전용, 3장(SARIF)은 계열 공통 |
+| [`docs/security-standards.md`](./docs/security-standards.md) | SAST/SCA/DAST 구분, STRIDE, CWE·CVSS·SARIF, 보안 설계 원칙 ↔ 코드 매핑, NIST SSDF |
 | [`docs/porting-to-other-harnesses.md`](./docs/porting-to-other-harnesses.md) | 다른 AI 도구로 옮기는 절차, 3층 지도, 오픈소스 모델 연결 방향 |
 
 ---
@@ -128,20 +148,24 @@ MCP 도구 호출은 쉘 명령이 아니라서 PreToolUse 훅이 보지 못한�
 
 ### Phase 2 착수 조건
 
-devops 에이전트가 생겨 `core/gate/`는 추출했다. 남은 후보의 조건은 아래와 같다.
+두 번째 에이전트를 실제로 만들어 본 결과, 아래가 선행 조건으로 확인됐다.
+DevOps 시도는 폐기했지만 이 제약은 다음 시도에도 그대로 적용된다.
 
 - `adapters/build.py`는 출력 파일명이 하드코딩되어 있다. 공유하려면 manifest의
-  에이전트 이름에서 파생시키는 리팩토링이 필요하다. **devops를 붙이며 추가
-  제약이 드러났다** — `.claude/settings.json`과 `.codex/config.toml`은 프로젝트
-  단위 파일이라 에이전트별로 생성하면 두 에이전트가 서로 덮어쓴다. 생성기가
-  에이전트 단위 출력과 프로젝트 단위 출력을 분리해야 한다.
-- `scanners/_lib.sh`는 devops가 사본을 갖고 있다. 공유하려면 `SEC_REPORT_DIR`을
-  중립 이름으로 개명해야 하고, 그 변수는 5개 파일 8곳에 있다.
-- `guard_scope.sh`의 §1–3(페이로드 파싱·자격증명·구조 금지)도 devops의
-  `guard_infra.sh`에 사본이 있다. 추출이 맞지만 그 파일은 100개 행동 테스트를
-  지고 있어 새 에이전트 추가와 같은 작업에 묶지 않았다.
-- `mcp/server.py`는 골격과 도구 정의를 분리해야 공유할 수 있다. devops는 아직
-  MCP 서버가 없다.
+  에이전트 이름에서 파생시켜야 한다. **더 큰 제약이 실측으로 드러났다** —
+  `.claude/settings.json`과 `.codex/config.toml`은 **프로젝트 단위** 파일이라
+  에이전트별로 생성하면 서로 덮어쓴다. 생성기가 에이전트 단위 출력과 프로젝트
+  단위 출력을 갈라야 한다. Codex는 프로파일(`~/.codex/<name>.config.toml` +
+  `--profile`)로 분리 가능함을 확인했고, Claude Code는 서브에이전트
+  frontmatter가 에이전트 단위라 가능하다.
+- `scanners/_lib.sh`를 공유하려면 `SEC_REPORT_DIR`을 중립 이름으로 개명해야
+  한다. 그 변수는 5개 파일 8곳에 있다.
+- `gate/`를 공유하려면 **게이트가 어느 에이전트를 위해 도는지 밖에서 받아야
+  한다.** 실제로 옮겨 보니 `__file__` 기준으로 리포트 디렉토리와 manifest를
+  찾고 있어서 공유 위치에서 깨졌다. 더 나쁜 것은 테스트가 이를 잡지 못했다는
+  점이다 — 폴백값(`high`/0)이 manifest 선언값과 같아 manifest를 한 번도 읽지
+  않고 통과했다.
+- `mcp/server.py`는 골격과 도구 정의를 분리해야 공유할 수 있다.
 
 ## 관련
 
