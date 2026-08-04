@@ -9,10 +9,8 @@
 > 필기를 바탕으로 AWS 공식 문서와 대조해 오개념을 짚고 사실을 재확인했으며,
 > 정리 방향과 최종 내용은 사람이 검토·승인했습니다.
 
-수업 필기 원본은
-[`_raw/2026-07-30-day1.txt`](../_raw/2026-07-30-day1.txt)에 가공하지 않고 둔다.
-필기에 없던 사실은 추가하지 않았고, 공식 문서로 보강한 부분은 "공식 자료"에
-출처를 달았다.
+수업 필기 원본은 별도 문서(Google Docs)로 관리한다. 필기에 없던 사실은
+추가하지 않았고, 공식 문서로 보강한 부분은 "공식 자료"에 출처를 달았다.
 
 ## 학습 목표
 
@@ -121,13 +119,30 @@ CloudFormation 템플릿은 YAML(또는 JSON) 형식이며, 대부분의 섹션�
 AgentCore를 CDK로 배포할 때도 내부적으로 CloudFormation을 호출하므로, 콘솔의
 CloudFormation 스택 화면에서 배포 이벤트와 생성된 리소스를 확인할 수 있다.
 
+### 변경 세트(Change Set)와 드리프트 감지
+
+스택을 업데이트할 때 바로 적용하는 대신, **변경 세트(change set)**로 어떤
+리소스가 추가·수정·삭제되는지 먼저 미리 볼 수 있다. CloudFormation은 제출한
+템플릿·파라미터와 현재 스택을 비교해 변경 세트를 만들고, 이 시점에는 실제
+스택을 바꾸지 않는다. 변경 세트를 검토한 뒤 실행(execute)해야 실제로
+적용된다 — "적용하면 무엇이 바뀌는지 모른 채 업데이트하는" 위험을 줄이는
+장치다.
+
+콘솔에서 리소스를 직접 수정하면 스택 정의와 실제 상태가 달라질 수 있다.
+이런 어긋남을 **드리프트(drift)**라 하고, CloudFormation은 드리프트
+감지로 스택이 마지막 배포 상태와 실제 상태 중 어디서 갈렸는지 확인할 수
+있다. "IaC로 관리하는 리소스는 콘솔에서 손대지 않는다"는 원칙이 지켜지지
+않았을 때 이를 발견하는 수단이 드리프트 감지다.
+
 CodeDeploy는 **애플리케이션**을 배포하고, CloudFormation은 **인프라**를
 배포한다. 애플리케이션과 인프라 코드의 빌드·테스트·배포까지 자동화하는 것이
 CodePipeline이다.
 
 ## 6. AWS CLI 설치와 인증
 
-AWS CLI는 Python 기반이므로 Python 설치 후 CLI를 설치한다. 설치 후
+AWS CLI는 내부적으로 Python으로 작성되어 있지만, 현재 표준인 **AWS CLI
+v2**는 Python을 자체 번들하므로 별도 Python 설치가 필요 없다(v1은 별도
+Python 설치가 전제조건이었으나 v1은 더 이상 표준이 아니다). 설치 후
 `aws configure` 명령으로 인증 정보를 로컬에 저장할 수 있다.
 
 인증에 필요한 값과 저장 파일:
@@ -176,11 +191,16 @@ CodePipeline 구성 시 옵션을 선택해 파이프라인을 세팅한다.
   이 노트에서 다루지 않는다(Day 2 실습 여부는 별도 확인 필요).
 - "깃옵스"·쿠버네티스와의 관계는 Day 2 필기에 언급만 있고 이 노트에서
   검증하지 않았다.
+- 변경 세트를 실제로 만들어 리소스 추가·수정·삭제 미리보기를 확인하거나,
+  콘솔에서 리소스를 직접 고쳐 드리프트 감지를 실행해보는 것은 하지 않았다 —
+  이 절은 강의 필기에 없어 전부 공식 문서로 보강한 내용이다.
 
 ## 공식 자료
 
 - [Amazon Machine Images in Amazon EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AMIs.html)
 - [DependsOn attribute (CloudFormation)](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-attribute-dependson.html)
+- [Update CloudFormation stacks using change sets](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-updating-stacks-changesets.html)
 - [Troubleshooting CloudFormation — Dependency error](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/troubleshooting.html)
 - [Step 4: Add build stage (CodePipeline)](https://docs.aws.amazon.com/help-panel/codepipeline/latest/helppanel/hp-create-pipeline-wizard.build.html)
 - [Infrastructure as Code (IaC) — AWS SAM](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-iac.html)
+- [Install or update to the latest version of the AWS CLI (v2 설치 요구사항 — Python 불필요)](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)

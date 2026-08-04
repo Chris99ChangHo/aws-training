@@ -13,7 +13,8 @@ AWS 오프라인 교육 과정 기록.
 | 폴더 | 근거 | 내용 |
 |---|---|---|
 | [`notes/lecture/`](./notes/lecture) | 강의 + AWS 공식 문서 대조 | Day 1 — 공동 책임 모델, IAM, 감사·탐지<br>Day 2 — 거버넌스, KMS·봉투 암호화, S3·DB 보호<br>Day 3 — VPC 경계, WAF, 관측성, 인시던트 대응 |
-| [`notes/_raw/`](./notes/_raw) | 수업 필기 원본 | 확보되면 넣습니다 |
+
+수업 필기 원본은 별도 문서(Google Docs)로 관리합니다.
 
 상세는 [`notes/README.md`](./notes)에 있습니다. 이 과정에는 `notes/practice/`가
 없습니다 — 실습이 위처럼 분리됐기 때문입니다. 그래서 강의 노트의 "확인하지 못한

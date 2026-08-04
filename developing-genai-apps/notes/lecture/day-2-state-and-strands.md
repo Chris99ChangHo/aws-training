@@ -6,8 +6,7 @@
 > SDK, MCP 아키텍처와 2026-07-28 개정, 멀티에이전트 패턴
 
 표기 규칙: `[문서]` 공식 문서 인용(링크 있음) · `[해석]` 문서를 놓고 내린
-판단. 수업 필기 원본은
-[`_raw/2026-07-29-day2.txt`](../_raw/2026-07-29-day2.txt)에 가공하지 않고 둔다.
+판단. 수업 필기 원본은 별도 문서(Google Docs)로 관리한다.
 API 시그니처는 이 노트에 적지 않는다 — 이유는
 [`agent-app-design.md`](../practice/agent-app-design.md) 상단, `strands-agents` 스킬 참고.
 
@@ -17,7 +16,11 @@ API 시그니처는 이 노트에 적지 않는다 — 이유는
 - 세션(`messages[]`)과 에이전트 상태(`agent.state`), 호출 컨텍스트의 수명과
   방향 차이를 구분한다.
 - 시스템 프롬프트 4블록 구조와 도구 description의 역할 분담을 안다.
+- HITL 3패턴(승인 게이트·에스컬레이션·감사 로그)과 설계 원칙을 안다.
 - Strands Agents SDK의 최소 구성(Model + Tools + System Prompt)을 안다.
+- 에이전트 개발의 3세대 진화(직접 구현 → 프레임워크 → Model-Driven)를
+  구분한다.
+- MCP·A2A·AG-UI가 각각 어떤 방향의 연결을 표준화하는지 구분한다.
 - MCP 아키텍처(stdio/HTTP)와 2026-07-28 개정의 방향을 안다.
 - 멀티에이전트 패턴을 실제 SDK 분류(Graph/Swarm/Workflow) 기준으로 정리한다.
 
@@ -65,6 +68,22 @@ S3(`S3SessionManager`), 저장소 인터페이스(`RepositorySessionManager`) �
 교체할 수 있다.
 ([session_manager API](https://strandsagents.com/docs/api/python/strands.session.session_manager/index.md))
 
+`[해석]` `SessionManager`가 대화를 **저장·복원**하는 계층이라면,
+`ConversationManager`는 매 호출마다 모델에 보낼 `messages[]`의 **길이**를
+정책으로 관리하는 별도 계층이다. 원본 필기는 세 가지를 든다.
+
+| 종류 | 동작 |
+|---|---|
+| SlidingWindow | 최근 N개 메시지만 유지(기본값) |
+| Summarizing | 오래된 구간을 요약으로 압축 |
+| NullConversationManager | 이력을 건드리지 않음 |
+
+`[해석]` 이 구분은 1절의 "토큰 폭발·윈도우 초과" 문제와 직접 연결된다 —
+대화가 길어질 때 무엇을 잘라내고 무엇을 남길지가 `ConversationManager`의
+정책이다. `SlidingWindow`를 너무 좁게 잡으면 "이전 추천을 참조해 달라"는
+요청이 무시되는 문제(컨텍스트 밖으로 밀려남)가 생길 수 있다 — 이 문제의
+실제 사례는 [`agent-app-design.md`](../practice/agent-app-design.md) 5절에 있다.
+
 ## 3. 세션 너머 — 장기 기억
 
 `[해석]` 세션이 끝나도 남아야 하는 정보는 별도 계층인 **장기 기억**으로
@@ -99,7 +118,42 @@ S3(`S3SessionManager`), 저장소 인터페이스(`RepositorySessionManager`) �
 description**에 둔다. 파라미터의 의미·형식은 description과 입력 스키마가
 함께 담당한다.
 
+## 4-1. Human-in-the-Loop(HITL) 3패턴
+
+`[해석]` Day 1에서 다룬 자율성 3단계(AI Assistant → AI Agent → Agentic AI)
+중 2단계부터는 고위험 동작 앞에 승인 게이트가 필요하다고 짚었다. 원본
+필기는 이를 위험도에 따른 기본 방침과 세 가지 구체적 패턴으로 더 좁혀
+정리한다.
+
+기본 방침: **읽기(조회) 작업은 자동 실행, 쓰기(변경) 작업은 승인 필요,
+고위험 작업(삭제·결제 등)은 이중 확인**을 거친다.
+
+- **승인 게이트**: 실행 전에 사람의 승인을 받는 패턴. 위 방침의 "쓰기는
+  승인" 단계에 대응한다.
+- **에스컬레이션**: 에이전트가 처리 범위를 벗어난 상황(모호함, 권한 부족,
+  예외 상황)을 만나면 자동 실행을 멈추고 사람에게 넘기는 패턴.
+- **감사 로그**: 자동 실행된 작업이라도 무엇을 언제 왜 했는지 기록을
+  남겨 사후에 추적할 수 있게 하는 패턴.
+
+`[해석]` 세 패턴을 관통하는 설계 원칙은 **최소 권한**(필요한 만큼만 자동
+실행 허용), **점진적 자율**(신뢰가 쌓인 작업부터 승인 단계를 줄여나감),
+**실패 안전**(판단이 애매하면 실행하지 않고 사람에게 넘기는 쪽으로
+기본값을 둠)이다.
+
 ## 5. Strands Agents SDK 개요
+
+`[해석]` 에이전트 개발 방식은 판단의 주체가 누구인가를 기준으로 세 세대로
+나눌 수 있다.
+
+| 세대 | 판단 주체 | 방식 | 대표 |
+|---|---|---|---|
+| 1세대 · 직접 구현 | 개발자 | LLM API를 직접 연결, 루프·프롬프트·응답 파싱을 전부 직접 코딩 | OpenAI·Anthropic API 직접 호출 |
+| 2세대 · 에이전트 프레임워크 | 그래프 구조 | 그래프 노드·상태 머신·역할 정의로 흐름을 설계 | LangChain·LangGraph·CrewAI |
+| 3세대 · Model-Driven | 모델 | LLM이 도구 선택과 실행 순서를 직접 판단, 개발자는 도구만 등록 | Strands Agents SDK |
+
+`[해석]` 세대가 올라갈수록 개발자가 흐름 제어 코드를 직접 짜는 비중이
+줄고, 모델의 판단에 위임하는 비중이 커진다. Strands는 3세대(Model-Driven)
+접근에 속한다.
 
 `[문서]` Strands 공식 문서는 에이전트 프레임워크의 흐름을 "모델이 도구
 선택과 순서를 직접 판단하는" model-driven 접근으로 설명한다. 최소 구성은
@@ -160,6 +214,40 @@ Strands에 한정된 개념이 아니라 OpenAI SDK, LangChain 등 LLM 생태계
 이는 아직 매우 최근(교육 시점 하루 전)에 나온 스펙이므로, 실제 SDK·서버
 생태계가 이 방향으로 얼마나 빠르게 전환할지는 계속 확인이 필요한 영역이다.
 
+## 6-1. A2A와 AG-UI — MCP와 함께 보는 세 방향 표준
+
+`[해석]` 원본 필기는 에이전트 생태계의 통합 문제를 "USB-C for AI"라는
+표현으로 요약한다 — 도구·에이전트·화면이라는 세 방향의 연결마다 커스텀
+통합이 필요했던 N×M 조합 폭발을, 방향마다 표준 하나로 통일하려는
+움직임이다. **MCP(도구 연결)·A2A(에이전트 간 연결)·AG-UI(화면 연결)**는
+경쟁 관계가 아니라 서로 다른 방향을 담당하는 상호 보완 관계다.
+
+**A2A(Agent2Agent)**는 독립적으로 배포된 에이전트 사이의 태스크 위임을
+표준화한 프로토콜이다. `[문서]` 에이전트는 `Agent Card`로 자신의 능력을
+알리고, 태스크는 상태를 가지고 진행된다 — 예를 들어 `submitted`(제출) →
+`working`(처리 중)을 거쳐 `completed`(완료)·`failed`(실패)·`canceled`
+(취소)·`rejected`(거부) 같은 종료 상태나 `input-required`(입력 필요)·
+`auth-required`(인증 필요) 같은 중단 상태로 진행된다.
+([A2A: Life of a Task](https://a2a-protocol.org/latest/topics/life-of-a-task/))
+Google이 발표한 뒤 Linux Foundation에 기증됐다.
+
+`[해석]` 원본 필기는 "Task 상태 6종"이라 적었으나, 공식 문서는 상태를
+"진행(working) → 중단 상태(input-required, auth-required) 또는 종료
+상태(completed, canceled, rejected, failed)"로 설명해 최소 6~7개 이상의
+개별 상태명이 나온다. 정확히 "6종"으로 고정해 부르는 표는 공식 문서에서
+찾지 못했으므로, 숫자를 못박지 않고 상태명 목록으로 정리해 둔다.
+
+**AG-UI(Agent-User Interaction)**는 에이전트와 프론트엔드 사이의 실시간
+이벤트 스트리밍을 표준화한 프로토콜이다. `[문서]` Server-Sent Events(SSE)
+기반의 타입이 있는(typed) 이벤트로 메시지·도구 호출·상태 변경을 프론트엔드에
+스트리밍한다. CopilotKit이 개발했고, Strands·LangGraph 같은 특정
+프레임워크에 종속되지 않는다.
+([CopilotKit AG-UI 문서](https://docs.showcase.copilotkit.ai/strands/ag-ui))
+
+`[해석]` 선택 기준은 이렇게 정리된다 — **도구를 연결한다면 MCP**가 기본
+출발점이고, **독립 배포된 에이전트 간 위임이 필요하면 A2A**, **에이전트를
+사용자 화면에 직접 노출하려면 AG-UI**를 쓴다.
+
 ## 7. 멀티에이전트 패턴 — 강의 분류 vs Strands 공식 분류
 
 `[해석]` 여기서 강의 필기와 Strands 공식 문서 사이에 **분류 체계 차이**가
@@ -196,10 +284,15 @@ Graph·Swarm·Workflow 중 무엇을 쓸지 먼저 판단하고, 강의의 6패�
 3. 장기 기억은 추출 → 저장 → 회수 → 주입. 사실·선호·에피소드 중 남길 것만.
 4. 시스템 프롬프트 4블록(역할/규칙/형식/제한) — 행동 규칙은 시스템 프롬프트,
    도구 선택 근거는 description에.
-5. Strands 최소 구성은 Model(필수) + Tools + System Prompt(둘 다 선택).
-6. MCP 2026-07-28 개정은 stateless 코어 전환이 핵심 — 구 HTTP+SSE는
+5. HITL은 읽기=자동/쓰기=승인/고위험=이중 확인이 기본 방침이고, 승인
+   게이트·에스컬레이션·감사 로그 3패턴으로 구현한다.
+6. Strands 최소 구성은 Model(필수) + Tools + System Prompt(둘 다 선택) —
+   에이전트 개발 3세대(직접 구현 → 프레임워크 → Model-Driven) 중 3세대에
+   해당한다.
+7. MCP(도구)·A2A(에이전트 간)·AG-UI(화면)는 방향이 다른 상호 보완 표준이다.
+8. MCP 2026-07-28 개정은 stateless 코어 전환이 핵심 — 구 HTTP+SSE는
    12개월 유예 후 제거.
-7. 멀티에이전트는 Strands 공식 3패턴(Graph/Swarm/Workflow)이 기준이고,
+9. 멀티에이전트는 Strands 공식 3패턴(Graph/Swarm/Workflow)이 기준이고,
    강의의 6패턴은 개념 분류로 참고한다.
 
 ## 확인하지 못한 것
@@ -209,6 +302,13 @@ Graph·Swarm·Workflow 중 무엇을 쓸지 먼저 판단하고, 강의의 6패�
   공식 문서에서 1:1로 명시한 것을 찾지 못했다.
 - MCP 2026-07-28 개정이 Strands SDK에 실제로 언제 반영되는지는 확인하지
   않았다.
+- A2A의 Task 상태를 "6종"으로 명시한 근거는 공식 문서에서 찾지 못했다 —
+  상태명 목록(submitted/working/input-required/auth-required/completed/
+  failed/canceled/rejected)은 확인했으나 이를 "6종"으로 묶는 공식 집계는
+  확인하지 못했다.
+- HITL 3패턴, ConversationManager 3종, 에이전트 3세대 진화는 강의 필기의
+  분류를 그대로 옮긴 것이며, Strands SDK나 별도 학술 자료로 이 분류
+  자체를 표준으로 확인하지는 않았다.
 
 ## 공식 자료
 
@@ -216,6 +316,8 @@ Graph·Swarm·Workflow 중 무엇을 쓸지 먼저 판단하고, 강의의 6패�
 - [Strands Multi-Agent Systems](https://strandsagents.com/docs/user-guide/concepts/multi-agent/multi-agent-patterns/index.md)
 - [MCP 2026-07-28 changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
 - [MCP 2026-07-28 release 공지](https://blog.modelcontextprotocol.io/posts/2026-07-28/)
+- [A2A Protocol — Life of a Task](https://a2a-protocol.org/latest/topics/life-of-a-task/)
+- [AG-UI 프로토콜 (CopilotKit)](https://docs.showcase.copilotkit.ai/strands/ag-ui)
 - API 시그니처는 `strands-agents` MCP 서버(`search_docs`/`fetch_doc`) 또는
   [llms.txt](https://strandsagents.com/llms.txt)로 조회 — 릴리스가 잦아
   정적 문서에 적으면 빠르게 낡는다.

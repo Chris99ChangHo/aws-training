@@ -5,14 +5,15 @@
 > 범위: 인스턴스형·서버리스 과금 모델, IAM 기초, Bedrock 인증 방식, RAG의 시맨틱 검색
 
 표기 규칙: `[문서]` AWS 공식 문서 인용(링크 있음) · `[해석]` 문서를 놓고 내린
-판단. 수업 필기 원본은 [`_raw/2026-07-27-day1.txt`](../_raw/2026-07-27-day1.txt)에
-가공하지 않고 둔다.
+판단. 수업 필기 원본은 별도 문서(Google Docs)로 관리한다.
 
 ## 학습 목표
 
 - 인스턴스 기반 과금과 서버리스 과금의 차이를 설명한다.
 - IAM의 user·group·policy·role 구조와 콘솔/CLI/SDK 접근 경로를 구분한다.
 - Bedrock 런타임 인증 방식(SigV4 vs API 키)의 차이와 각각의 용도를 안다.
+- Bedrock Inference profiles의 두 종류(시스템 정의·애플리케이션)와 용도를
+  구분한다.
 - 시맨틱 검색이 키워드 검색과 다른 지점을 설명한다.
 
 ## 1. 인스턴스형 vs 서버리스: 두 가지 과금 모델
@@ -28,6 +29,16 @@
 인스턴스형이 유리할 수 있고, 트래픽이 간헐적이거나 예측 불가능하면 서버리스가
 유리할 수 있다. 실제 비용은 워크로드 패턴에 따라 달라지므로 일반화된 "항상
 서버리스가 싸다"는 결론은 내리지 않는다.
+
+### 평가는 모델·RAG·에이전트를 따로 한다
+
+`[해석]` 생성형 AI 애플리케이션은 모델만 단독으로 쓰는 경우가 드물고, 검색
+(RAG)이나 도구 호출(에이전트)까지 포함한 하네스와 함께 배포되는 경우가
+많다. 그래서 평가도 계층별로 나뉜다 — 모델 자체의 응답 품질, RAG의 검색·
+생성 품질, 에이전트의 도구 선택·작업 완료율은 각각 다른 지표와 방법으로
+평가한다. "모델을 평가한다"는 말이 전체 애플리케이션을 평가했다는 뜻이
+아니다 — 하네스(검색·도구·오케스트레이션)가 성능에 크게 기여하므로 하네스
+자체도 평가 대상이 된다.
 
 ## 2. IAM: 인증의 기본 단위
 
@@ -79,7 +90,27 @@ IAM이다.
 추측으로 남겨두고, 프로덕션 설계 시에는 AWS가 명시적으로 권고하는 대로
 단기 자격 증명(IAM 역할) 우선을 기본값으로 삼는다.
 
-## 4. RAG의 시맨틱 검색
+## 4. Bedrock Inference profiles
+
+`[문서]` Inference profile은 모델과 그 모델이 요청을 라우팅할 수 있는 하나
+이상의 리전을 정의한다. 크게 두 종류가 있다.
+
+- **시스템 정의(system-defined) 프로파일**: AWS가 미리 만들어 둔 것으로,
+  Cross-Region Inference에 쓴다 — 하나의 리전에서 온 요청을 여러 리전의
+  컴퓨트로 분산해 처리량과 복원력을 높인다. 요청을 보낼 소스 리전과, 그
+  요청이 실제로 라우팅될 수 있는 대상 리전들을 정의한다. 이 프로파일은
+  또다시 **리전(geographic) 단위**와 **글로벌 단위**로 나뉜다 — 필기의
+  "리전, 글로벌추론프로파일 두 가지"가 이 구분에 대응한다.
+- **애플리케이션(application) 프로파일**: 사용자가 직접 만드는 프로파일로,
+  비용·사용량을 추적하기 위한 용도다. 단일 리전용으로 만들 수도 있고,
+  시스템 정의 Cross-Region 프로파일을 감싸서 여러 리전에 걸친 사용량을
+  하나로 추적할 수도 있다. API로만 생성할 수 있다.
+
+`[해석]` 필기의 "시스템적인게 있고 내가 작성할 수도 있다"는 이 두 종류의
+구분과 정확히 대응한다 — 시스템 정의는 AWS가 만든 것(Cross-Region 라우팅),
+애플리케이션은 사용자가 만든 것(비용 추적)이다.
+
+## 5. RAG의 시맨틱 검색
 
 `[해석]` RAG(Retrieval-Augmented Generation)에서 벡터 데이터베이스 검색은
 **시맨틱 검색**이다. 이는 검색어의 정확한 문자열이 일치하는지를 보는
@@ -98,6 +129,8 @@ Knowledge Bases**다. 시맨틱 검색의 구체적인 동작과 한계(같은 �
 - [ ] IAM user/group/policy/role의 역할을 구분하는가?
 - [ ] Bedrock SigV4 인증과 API 키 인증의 용도 차이를 설명할 수 있는가?
 - [ ] 장기 API 키를 프로덕션에 쓰면 안 되는 이유를 아는가?
+- [ ] 시스템 정의 Inference profile과 애플리케이션 Inference profile의
+      용도 차이를 설명할 수 있는가?
 - [ ] 시맨틱 검색과 키워드 검색의 차이를 설명할 수 있는가?
 
 ## 확인하지 못한 것
@@ -112,5 +145,7 @@ Knowledge Bases**다. 시맨틱 검색의 구체적인 동작과 한계(같은 �
 - [Amazon Bedrock API 키 참조](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-reference.html)
 - [Bedrock Mantle Chat Completions API](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions-mantle.html)
 - [Bedrock API 키 GA 발표 (2025-07)](https://aws.amazon.com/about-aws/whats-new/2025/07/amazon-bedrock-api-keys-for-streamlined-development/)
+- [Bedrock Inference profiles](https://docs.aws.amazon.com/help-panel/bedrock/latest/console/hp-inference-profiles.html)
+- [Increase throughput and resilience with cross-region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/geographic-cross-region-inference.html)
 - [IAM이란?](https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction.html)
 - [Amazon Bedrock Knowledge Bases란?](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html)

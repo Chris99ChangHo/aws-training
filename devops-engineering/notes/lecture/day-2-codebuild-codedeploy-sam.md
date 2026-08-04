@@ -9,10 +9,8 @@
 > 필기를 바탕으로 AWS 공식 문서와 대조해 오개념을 짚고 사실을 재확인했으며,
 > 정리 방향과 최종 내용은 사람이 검토·승인했습니다.
 
-수업 필기 원본은
-[`_raw/2026-07-31-day2.txt`](../_raw/2026-07-31-day2.txt)에 가공하지 않고 둔다.
-필기에 없던 사실은 추가하지 않았고, 공식 문서로 보강한 부분은 "공식 자료"에
-출처를 달았다.
+수업 필기 원본은 별도 문서(Google Docs)로 관리한다. 필기에 없던 사실은
+추가하지 않았고, 공식 문서로 보강한 부분은 "공식 자료"에 출처를 달았다.
 
 ## 학습 목표
 
@@ -112,6 +110,9 @@ CodeDeploy는 **애플리케이션**과 **배포 그룹**을 만들어야 배포
 Auto Scaling 설정 요소:
 
 - **최소/최대 개수**: 비용 폭탄을 막기 위한 하한·상한.
+- **원하는 용량(desired capacity)**: 그룹이 유지하려는 목표 개수. 최소·최대
+  개수 사이에서 지정하며, 지정하지 않으면 최소 개수가 기본값이 된다.
+  스케일링 정책이 이 값을 조정한다.
 - **스케일링 정책**: 언제 개수를 늘리고 줄일지 결정하는 조건.
 - **시작 템플릿(launch template)**: 새로 시작할 인스턴스의 유형·구성을 정의.
 
@@ -119,6 +120,23 @@ Auto Scaling 설정 요소:
 
 CodeDeploy에 배포할 소스 코드가 어디에 저장되어 있는지를 나타내는 것이
 리비전 타입이다(예: S3, GitHub).
+
+### 배포 유형: In-Place vs Blue/Green
+
+CodeDeploy는 배포 유형을 두 가지로 제공한다.
+
+- **In-Place**: 배포 그룹의 각 인스턴스에서 기존 애플리케이션을 멈추고, 최신
+  리비전을 설치한 뒤 다시 시작·검증한다. **EC2/On-Premises 컴퓨트 플랫폼만**
+  쓸 수 있다 — Lambda와 ECS는 In-Place 배포를 지원하지 않는다.
+- **Blue/Green**: 플랫폼별로 동작이 다르다.
+  - EC2/On-Premises: 기존 인스턴스(블루) 대신 새 인스턴스 집합(그린)을
+    준비해 로드밸런서에 등록하고, 트래픽을 전환한 뒤 기존 인스턴스를
+    등록 해제한다.
+  - Lambda/ECS: canary·linear·all-at-once 배포 구성으로 트래픽을 증분
+    전환한다.
+
+즉 EC2는 두 유형을 모두 쓸 수 있지만, **Lambda·ECS는 Blue/Green만** 쓸 수
+있다.
 
 ### 자동화 설정의 의미
 
@@ -186,6 +204,17 @@ SAM CLI 워크플로우는 AgentCore CLI와 유사한 패턴이다.
 sam init → sam build → sam local (test) → sam deploy
 ```
 
+`sam local`은 하위 명령으로 세분화된다.
+
+| 명령 | 용도 |
+|---|---|
+| `sam local invoke` | Lambda 함수를 로컬에서 1회 호출해 테스트 |
+| `sam local start-api` | API Gateway로 트리거되는 함수를 로컬 HTTP 서버로 띄워 테스트 |
+| `sam local start-lambda` | Lambda 서비스를 흉내내는 로컬 엔드포인트를 띄워 AWS CLI·SDK로 호출 |
+
+배포 전에 로컬에서 실제 요청 형태로 함수를 검증할 수 있어, 매번 `sam
+deploy`까지 가지 않고도 오류를 먼저 잡을 수 있다.
+
 `sam init`을 실행하면 설정값을 입력받아 프로젝트를 생성한다. 생성된
 프로젝트는 보통 `app.py`(Lambda 함수 코드)와 `template.yaml`(SAM 템플릿
 파일)로 구성된다.
@@ -213,10 +242,15 @@ Lambda 관련 커스텀 설정 두 가지가 새로 추가되었다는 언급이
 - CodeDeploy 배포 그룹을 EC2/Lambda/ECS 각각에 실제로 구성해보고 동작 차이를
   비교.
 - Auto Scaling 정책(스케일링 조건)을 실제로 트리거해 개수 변화를 관찰.
-- SAM `init → build → deploy` 전체 워크플로우를 직접 실행.
+- SAM `init → build → deploy` 전체 워크플로우를 직접 실행. `sam local`
+  하위 명령(`invoke`/`start-api`/`start-lambda`)도 직접 실행해 로컬 테스트
+  결과를 확인하지 않았다 — 용도 구분은 공식 문서로만 확인했다.
 - GitOps와 쿠버네티스의 관계, "쿠버네티스는 다 깃옵스"라는 필기 내용의
   정확성.
 - Lambda에 새로 추가되었다고 언급된 커스텀 설정 두 가지의 구체적 내용.
+- CodeDeploy In-Place와 Blue/Green을 EC2에서 각각 실제로 배포해 동작
+  차이를 비교하는 것 — 이 구분은 강의 필기에 없어 전부 공식 문서로 보강한
+  내용이다.
 
 ## 공식 자료
 
@@ -226,3 +260,7 @@ Lambda 관련 커스텀 설정 두 가지가 새로 추가되었다는 언급이
 - [Deploy your application and resources with AWS SAM](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-deploying.html)
 - [Tutorial: Deploy a serverless application (SAM template example)](https://docs.aws.amazon.com/codecatalyst/latest/userguide/deploy-tut-lambda.html)
 - [Infrastructure as Code (IaC) — AWS SAM과 CloudFormation의 관계](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-iac.html)
+- [What is CodeDeploy? — Overview of CodeDeploy deployment types (In-place vs Blue/green)](https://docs.aws.amazon.com/codedeploy/latest/userguide/welcome.html)
+- [AWS Auto Scaling group desired capacity](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_autoscaling.CfnAutoScalingGroupProps.html)
+- [Introduction to testing with sam local invoke](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/using-sam-cli-local-invoke.html)
+- [Introduction to testing with sam local start-api](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/using-sam-cli-local-start-api.html)
