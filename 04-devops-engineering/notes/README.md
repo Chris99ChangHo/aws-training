@@ -38,7 +38,7 @@
 ```
 
 다른 과정과 같은 골격입니다. 자세한 설명은
-[`security-engineering/notes/README.md`](../../security-engineering/notes)를
+[`security-engineering/notes/README.md`](../../02-security-engineering/notes)를
 보세요.
 
 `확인하지 못한 것`은 **필수**입니다. 무엇을 검증하지 않았는지 적지 않으면

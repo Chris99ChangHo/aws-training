@@ -2,17 +2,17 @@
 
 ## 이 노트의 성격
 
-`gangnam-dining-concierge` 실습과 `labs/`의 Strands·MCP 랩에서 **실제로 겪은
+`gangnam-dining-concierge` 실습과 Strands·MCP 랩에서 **실제로 겪은
 문제**에서 이전 가능한 원칙만 뽑은 것이다. API 사용법은 여기 적지 않는다 —
 Strands는 릴리스가 잦아 정적 문서에 시그니처를 적으면 빠르게 낡는다. 그쪽은
 아래 개별 노트와 공식 문서를 본다.
 
 | 주제 | 위치 |
 |---|---|
-| `@tool` 데코레이터 | [`labs/strands-basics/notes/tool-decorator.md`](../../../labs/strands-basics/notes/tool-decorator.md) |
-| Structured Output (Pydantic) | [`labs/strands-basics/notes/structured-output.md`](../../../labs/strands-basics/notes/structured-output.md) |
-| 모델 프로바이더 교체 | [`labs/strands-basics/notes/model-provider.md`](../../../labs/strands-basics/notes/model-provider.md) |
-| MCP 클라이언트 연결 패턴 | [`labs/strands-mcp-client/notes/mcpclient-pattern.md`](../../../labs/strands-mcp-client/notes/mcpclient-pattern.md) |
+| `@tool` 데코레이터 | [`strands-basics/notes/tool-decorator.md`](../../strands-basics/notes/tool-decorator.md) |
+| Structured Output (Pydantic) | [`strands-basics/notes/structured-output.md`](../../strands-basics/notes/structured-output.md) |
+| 모델 프로바이더 교체 | [`strands-basics/notes/model-provider.md`](../../strands-basics/notes/model-provider.md) |
+| MCP 클라이언트 연결 패턴 | [`strands-mcp-client/notes/mcpclient-pattern.md`](../../strands-mcp-client/notes/mcpclient-pattern.md) |
 
 표기: `[실측]` 실습에서 확인한 것 / `[해석]` 그것을 놓고 내린 판단.
 

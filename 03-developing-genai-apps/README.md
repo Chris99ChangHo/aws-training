@@ -9,12 +9,12 @@ MCP 연결, 세션 영속화, Streamlit UI까지 하나의 앱으로 묶습니�
 |---|---|---|
 | 강남 다이닝 컨시어지 | [`gangnam-dining-concierge/`](./gangnam-dining-concierge) | Strands Agents 도구·MCP·세션 영속화·Streamlit 챗봇 UI |
 
-기능 단위로 쪼갠 선행 랩은 [`labs/`](../labs)에 있습니다.
+기능 단위로 쪼갠 선행 랩은 이 과정 폴더 안에 있습니다.
 
 | 랩 | 내용 |
 |---|---|
-| [`labs/strands-basics/`](../labs/strands-basics) | 빌트인·커스텀 도구, 멀티턴, 콜백 관찰 |
-| [`labs/strands-mcp-client/`](../labs/strands-mcp-client) | stdio·Streamable HTTP 트랜스포트, MCP 도구와 로컬 `@tool` 혼합 |
+| [`strands-basics/`](./strands-basics) | 빌트인·커스텀 도구, 멀티턴, 콜백 관찰 |
+| [`strands-mcp-client/`](./strands-mcp-client) | stdio·Streamable HTTP 트랜스포트, MCP 도구와 로컬 `@tool` 혼합 |
 
 ## 이론 정리
 

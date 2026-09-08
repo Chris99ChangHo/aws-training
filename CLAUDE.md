@@ -9,7 +9,7 @@ AWS 오프라인 교육 기록과, 그 과정에서 파생된 벤더 독립 에�
 
 | 축 | 위치 | 성격 |
 |---|---|---|
-| 과정 | `generative-ai-essentials/`, `security-engineering/`, `developing-genai-apps/`, `labs/` | 학습 기록. 내용이 AWS에 종속돼도 무방 |
+| 과정 | `01-generative-ai-essentials/`, `02-security-engineering/`, `03-developing-genai-apps/`, `labs/` | 학습 기록. 내용이 AWS에 종속돼도 무방 |
 | 에이전트 | `agents/` | 작업물. **정의상 벤더 독립** |
 
 두 번째를 첫 번째 안에 넣지 않습니다. 벤더 독립이 목표인 산출물이 특정 벤더
@@ -64,8 +64,8 @@ python3 gate/gate.py --fail-on high --max-allowed 0
 
 ```bash
 # 상시 과금 리소스 정리 (기본은 dry-run)
-python3 generative-ai-essentials/seoul-travel-planner-kb/cleanup.py
-python3 generative-ai-essentials/seoul-travel-planner-kb/cleanup.py --delete
+python3 01-generative-ai-essentials/seoul-travel-planner-kb/cleanup.py
+python3 01-generative-ai-essentials/seoul-travel-planner-kb/cleanup.py --delete
 ```
 
 ## 절대 하지 않는 것

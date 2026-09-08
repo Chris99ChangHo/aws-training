@@ -17,9 +17,9 @@
 목록과 폴더 규칙은 [`mission/README.md`](./mission)에 있습니다. 나머지 폴더는
 자체 `README.md`와 `requirements.txt`를 갖고 독립적으로 실행됩니다.
 
-Strands Agents 기초·MCP 클라이언트 랩은 `developing-genai-apps` 과정에
-묶여 있어 [`developing-genai-apps/strands-basics/`](../developing-genai-apps/strands-basics)와
-[`developing-genai-apps/strands-mcp-client/`](../developing-genai-apps/strands-mcp-client)에
+Strands Agents 기초·MCP 클라이언트 랩은 `03-developing-genai-apps` 과정에
+묶여 있어 [`03-developing-genai-apps/strands-basics/`](../03-developing-genai-apps/strands-basics)와
+[`03-developing-genai-apps/strands-mcp-client/`](../03-developing-genai-apps/strands-mcp-client)에
 있습니다.
 
 ## 공통 사항

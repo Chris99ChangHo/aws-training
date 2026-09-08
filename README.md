@@ -6,7 +6,7 @@ AWS 오프라인 교육 과정 기록과, 그 과정에서 파생된 에이전�
 
 | 축 | 폴더 | 성격 |
 |---|---|---|
-| **과정** | `generative-ai-essentials/` 등 | 학습 기록. 시간순·과정별 |
+| **과정** | `01-generative-ai-essentials/` 등 | 학습 기록. 시간순·과정별 |
 | **에이전트** | [`agents/`](./agents) | 작업물. AWS 에이전트를 해체해 벤더 독립으로 재구현한 계열 |
 
 ## 에이전트
@@ -24,10 +24,10 @@ AWS가 제공하는 에이전트를 해체해서, 특정 클라우드 벤더에�
 
 | 과정 | 폴더 | 내용 |
 |---|---|---|
-| Generative AI Essentials on AWS | [`generative-ai-essentials/`](./generative-ai-essentials) | Bedrock Knowledge Base, RAG, 검색 품질 튜닝 |
-| Security Engineering on AWS | [`security-engineering/`](./security-engineering) | (실습은 `agents/security/`로 분리) |
-| Developing Generative AI Applications on AWS | [`developing-genai-apps/`](./developing-genai-apps) | Strands Agents, MCP, Streamlit 챗봇 |
-| DevOps Engineering on AWS | [`devops-engineering/`](./devops-engineering) | CI/CD, IaC, CodeBuild·CodeDeploy, SAM (이론 정리만, 실습 진행 예정) |
+| Generative AI Essentials on AWS | [`01-generative-ai-essentials/`](./01-generative-ai-essentials) | Bedrock Knowledge Base, RAG, 검색 품질 튜닝 |
+| Security Engineering on AWS | [`02-security-engineering/`](./02-security-engineering) | (실습은 `agents/security/`로 분리) |
+| Developing Generative AI Applications on AWS | [`03-developing-genai-apps/`](./03-developing-genai-apps) | Strands Agents, MCP, Streamlit 챗봇 |
+| DevOps Engineering on AWS | [`04-devops-engineering/`](./04-devops-engineering) | CI/CD, IaC, CodeBuild·CodeDeploy, SAM (이론 정리만, 실습 진행 예정) |
 | (과정 외) 기능 단위 랩 + 미션 시리즈 | [`labs/`](./labs) | InvokeModel, AgentCore Runtime 배포, 워크숍 미션 8개(`labs/mission/`) |
 
 ## 구조
@@ -41,15 +41,15 @@ aws-training/
 │   ├── docs/                           계열 공통 문서 (표준, 포팅 가이드)
 │   └── security/                       에이전트 하나당 폴더 하나
 │
-├── generative-ai-essentials/           <- 과정
+├── 01-generative-ai-essentials/           <- 과정
 │   ├── README.md
 │   ├── notes/                          이론 정리
 │   │   ├── lecture/                    강의 정리 (수업 필기 원본은 별도 문서로 관리)
 │   │   └── practice/                   실습에서 도출한 정리
 │   └── seoul-travel-planner-kb/        실습
-├── security-engineering/
-├── developing-genai-apps/
-├── devops-engineering/
+├── 02-security-engineering/
+├── 03-developing-genai-apps/
+├── 04-devops-engineering/
 └── labs/                               <- 기능 단위 랩 + 미션 시리즈
     ├── invoke-model/                   기능 단위 랩
     ├── agentcore-setup/
