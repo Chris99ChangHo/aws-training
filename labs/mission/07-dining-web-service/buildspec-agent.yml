@@ -1,0 +1,34 @@
+version: 0.2
+
+# dining-web-agent CodeBuild 프로젝트 — 풀스택 파이프라인의 Deploy 스테이지
+# 액션 1(RunOrder 1). DiningConcierge 에이전트를 AgentCore Runtime에 배포합니다.
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+      python: 3.12
+    commands:
+      - npm install -g @aws/agentcore
+      - pip install uv
+  pre_build:
+    commands:
+      # aws-targets.json은 계정 ID를 포함하므로 커밋하지 않는다(.gitignore).
+      # CodeBuild 컨테이너는 매번 클린 체크아웃이라 이 단계에서 매 실행마다
+      # 동적으로 만들어야 agentcore deploy가 대상을 찾는다. AWS_ACCOUNT_ID는
+      # CodeBuild 기본 제공 변수가 아니라 sts로 직접 조회한다.
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - |
+        cat > DiningConcierge/agentcore/aws-targets.json <<EOF
+        [
+          {
+            "name": "default",
+            "account": "${ACCOUNT_ID}",
+            "region": "${AWS_DEFAULT_REGION}"
+          }
+        ]
+        EOF
+  build:
+    commands:
+      - cd DiningConcierge
+      - agentcore deploy -y

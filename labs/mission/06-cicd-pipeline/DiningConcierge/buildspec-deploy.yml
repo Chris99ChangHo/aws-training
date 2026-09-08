@@ -1,0 +1,17 @@
+version: 0.2
+
+# dining-deploy CodeBuild 프로젝트가 사용하는 buildspec.
+# Test 스테이지(dining-test)가 성공해야만 CodePipeline이 이 스테이지를 실행합니다.
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+      python: 3.12
+    commands:
+      - npm install -g @aws/agentcore
+      - pip install uv
+  build:
+    commands:
+      - cd DiningConcierge
+      - agentcore deploy -y

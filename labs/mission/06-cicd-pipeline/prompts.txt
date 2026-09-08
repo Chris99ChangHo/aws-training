@@ -1,0 +1,566 @@
+시리즈 6: CI/CD
+시리즈 개요
+손으로 배포하던 다이닝 에이전트를 파이프라인에 태웁니다. 전반부는 배포 전 안전장치입니다 — 소스가 바뀔 때마다 Strands Evals가 응답 품질을 채점하고, 임계를 넘어야만 AgentCore에 자동 배포되는 게이트를 만들고, 나쁜 버전으로 그 게이트가 정말 막는지 실증합니다. 후반부는 배포 후 안전장치입니다 — 배포된 새 버전을 canary 엔드포인트에서 검증하고 통과할 때만 production을 자동 승격하는 카나리 스테이지를 붙인 뒤, 게이트는 통과하지만 실환경에서만 드러나는 결함을 카나리가 잡아내는 것까지 확인합니다.
+
+아키텍처
+아키텍처
+평균 ≥ 0.7
+통과 시 승격
+개발자
+S3 소스 버킷
+Test — Evals 게이트
+Deploy — agentcoredeploy
+Canary — 카나리 검증
+production 엔드포인트
+시작 조건
+AWS 계정 (Bedrock + AgentCore + CodePipeline/CodeBuild 접근 권한)
+AgentCore CLI 설치 + CDK Bootstrap 완료
+미션 안에서 새 에이전트를 만들어 시작합니다 — 앞서 Runtime에 배포한 프로젝트가 남아 있으면 재사용할 수도 있습니다
+미션은 앞선 미션의 산출물을 이어받습니다 — 구체적인 선행 관계는 각 미션의 선행 미션 목록에 표시됩니다
+리전: us-west-2
+
+다이닝 에이전트 배포 파이프라인
+중급
+평가 게이트를 통과해야만 자동 배포되는 다이닝 에이전트 배포 파이프라인을 구축합니다.
+
+미션 브리핑
+지금까지 다이닝 에이전트는 손으로 배포해 왔습니다. 이제 코드가 바뀔 때마다 사람 손을 거치지 않고 — 단, 평가 게이트를 통과해야만 — 자동 배포되게 만듭니다. 소스 버킷에 새 버전을 올리면 파이프라인이 Strands Evals로 응답 품질을 채점하고, 평균 점수가 임계를 넘어야 AgentCore에 배포합니다. 이 미션은 파이프라인을 조립해 첫 실행을 성공시킨 뒤, 파이프라인이 배포한 에이전트를 미니 Streamlit 앱에서 호출해 소스 변경이 앱 응답까지 반영되는 것을 눈으로 확인하는 것까지입니다 — 게이트가 실제로 배포를 막는 실증은 다음 미션에서 이어집니다.
+
+평가 케이스를 통과할 수 있는 다이닝 에이전트(식당 카탈로그 도구·추측 금지 프롬프트)를 준비하세요
+S3 버전드 소스 → Test(Evals 게이트) → Deploy(자동 배포)로 이어지는 dining-pipeline을 만드세요
+첫 실행에서 Test·Deploy가 모두 성공하는 것까지 확인하세요
+마지막으로 배포된 에이전트를 미니 Streamlit 앱에서 호출하고, 소스 한 줄 변경이 파이프라인을 거쳐 앱 응답까지 바뀌는 것을 확인하세요
+선행 조건
+AWS 계정에 CodePipeline·CodeBuild·S3 접근 권한
+AgentCore CLI 설치 (npm install -g @aws/agentcore)
+
+목표
+평가 케이스를 통과할 수 있는 DiningConcierge 준비 — search_restaurants 카탈로그와 추측 금지 시스템 프롬프트
+CodePipeline dining-pipeline 생성 — S3 버전드 소스 뒤 Test·Deploy 2스테이지
+첫 실행 성공 — Test(게이트 통과)·Deploy(자동 배포)까지 전부 Succeeded
+앱 확인 — 미니 Streamlit 앱에서 배포된 Runtime을 호출하고, 소스 변경 → 파이프라인 재실행 후 같은 질문의 응답이 바뀐 것을 브라우저에서 확인
+제약 조건
+소스는 버전 관리를 켠 S3 버킷 dining-src-<YOUR_ACCOUNT_ID> 사용 — CodeCommit·GitHub 등 Git 소스 금지(이 미션은 S3 소스로 고정)
+평가 게이트는 Strands Evals — 지정된 평가 케이스 3종의 평균 점수가 0.7 미만이면 배포 차단
+앞 미션의 다른 리소스(Memory·Gateway 등)에 의존하지 않음
+리전: us-west-2
+UI: Streamlit 미니 앱(파이프라인이 배포한 에이전트 호출)
+
+힌트
+핵심 패턴
+
+python
+
+# evals/gate_eval.py — 평가 게이트 핵심
+experiment = Experiment(cases=cases, evaluators=[OutputEvaluator(rubric=rubric)])
+report = experiment.run_evaluations(task=run_agent)
+avg = sum(report.scores) / len(report.scores)
+sys.exit(0 if avg >= 0.7 else 1)
+import는
+Case
+·
+Experiment
+가
+strands_evals
+,
+OutputEvaluator
+가
+strands_evals.evaluators
+소속
+트러블슈팅
+
+Test 실패:
+gate_eval.py
+의
+run_agent
+함수가 로컬에서 3케이스 전부 0.7 이상인지 먼저 확인
+Deploy 실패: buildspec-deploy.yml에서
+cd DiningConcierge && agentcore deploy -y
+— zip 루트가 아니라 프로젝트 폴더 안에서 실행해야
+agentcore/
+설정을 찾음
+S3 업로드 후 파이프라인 미시작: 버킷 버전 관리가 활성화되었는지, source.zip 키가 파이프라인 소스 설정과 일치하는지 확인
+전체 코드는 솔루션의 「직접 코드」 탭을 참고하세요.
+
+1
+환경 확인
+도구 설치와 AWS 자격 증명을 확인합니다.
+
+bash
+
+node --version   # v20 이상
+
+# AgentCore CLI
+agentcore --version
+
+# Python
+python3 --version   # 3.12 이상
+
+# pip 패키지
+pip install "strands-agents>=1.43" "strands-agents-evals>=1.0" "bedrock-agentcore>=1.15" boto3
+
+# AWS CLI + 자격 증명
+aws --version
+aws sts get-caller-identity   # 리전: us-west-2
+확인
+모든 도구 버전 출력 정상
+aws sts 응답에 Account ID 표시
+2
+에이전트 준비
+파이프라인에 태울 다이닝 에이전트를 준비합니다.
+
+python
+
+# --- AgentCore 프로젝트 생성 ---
+# agentcore create --name DiningConcierge --framework Strands --model-provider Bedrock --memory none
+
+# --- DiningConcierge/app/DiningConcierge/main.py ---
+from bedrock_agentcore import BedrockAgentCoreApp
+from strands import Agent, tool
+from strands.models import BedrockModel
+
+SYSTEM_PROMPT = """당신은 강남 다이닝 컨시어지 AI 어시스턴트입니다.
+강남 일대 식당 추천, 메뉴 안내, 예약 문의를 도와줍니다.
+모르는 정보는 추측하지 말고 '확인 후 안내하겠습니다'라고 답하세요."""
+
+CATALOG = [
+    {"name": "트라토리아 벨라", "cuisine": "이탈리안", "location": "강남역", "spicy": "보통"},
+    {"name": "스시 오마카세 하루", "cuisine": "일식", "location": "강남역", "spicy": "순함"},
+    {"name": "한우명가", "cuisine": "한식", "location": "역삼역", "spicy": "보통"},
+    {"name": "매콤한 마라", "cuisine": "중식", "location": "강남역", "spicy": "아주 매움"},
+]
+
+@tool
+def search_restaurants(query: str) -> str:
+    """강남 식당 카탈로그를 검색합니다."""
+    results = [r for r in CATALOG if query.lower() in str(r).lower()]
+    if not results:
+        results = CATALOG
+    return str(results)
+
+model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-6")
+agent = Agent(model=model, system_prompt=SYSTEM_PROMPT, tools=[search_restaurants])
+
+app = BedrockAgentCoreApp()
+
+@app.entrypoint
+def my_agent(payload):
+    result = agent(payload.get("prompt", ""))
+    return {"result": str(result)}
+확인
+agentcore dev로 로컬 테스트 — "이탈리안 추천" 질문에 트라토리아 벨라 포함 응답
+카탈로그 기반 추천 (추측 아님)
+3
+파이프라인 구축과 첫 실행
+S3 버전드 소스 → Test → Deploy 파이프라인을 만들고 첫 실행을 성공시킵니다.
+
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+python
+
+import boto3
+import json
+
+ACCOUNT_ID = "<YOUR_ACCOUNT_ID>"
+REGION = "us-west-2"
+
+s3 = boto3.client("s3", region_name=REGION)
+codebuild = boto3.client("codebuild", region_name=REGION)
+codepipeline = boto3.client("codepipeline", region_name=REGION)
+
+# --- S3 버킷 생성 + 버전 관리 ---
+bucket_name = f"dining-src-{ACCOUNT_ID}"
+s3.create_bucket(
+    Bucket=bucket_name,
+    CreateBucketConfiguration={"LocationConstraint": REGION},
+)
+s3.put_bucket_versioning(
+    Bucket=bucket_name,
+    VersioningConfiguration={"Status": "Enabled"},
+)
+
+# --- CodeBuild 프로젝트: dining-test ---
+codebuild.create_project(
+    name="dining-test",
+    source={"type": "CODEPIPELINE", "buildspec": "buildspec-test.yml"},
+    artifacts={"type": "CODEPIPELINE"},
+    environment={
+        "type": "LINUX_CONTAINER",
+        "computeType": "BUILD_GENERAL1_SMALL",
+        "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
+    },
+    serviceRole="<YOUR_CODEBUILD_ROLE_ARN>",
+)
+
+# --- CodeBuild 프로젝트: dining-deploy ---
+codebuild.create_project(
+    name="dining-deploy",
+    source={"type": "CODEPIPELINE", "buildspec": "buildspec-deploy.yml"},
+    artifacts={"type": "CODEPIPELINE"},
+    environment={
+        "type": "LINUX_CONTAINER",
+        "computeType": "BUILD_GENERAL1_SMALL",
+        "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
+    },
+    serviceRole="<YOUR_CODEBUILD_ROLE_ARN>",
+)
+
+# --- CodePipeline: dining-pipeline ---
+codepipeline.create_pipeline(
+    pipeline={
+        "name": "dining-pipeline",
+        "roleArn": "<YOUR_PIPELINE_ROLE_ARN>",
+        "stages": [
+            {
+                "name": "Source",
+                "actions": [{
+                    "name": "S3Source",
+                    "actionTypeId": {"category": "Source", "owner": "AWS", "provider": "S3", "version": "1"},
+                    "configuration": {"S3Bucket": bucket_name, "S3ObjectKey": "source.zip", "PollForSourceChanges": "true"},
+                    "outputArtifacts": [{"name": "SourceOutput"}],
+                }],
+            },
+            {
+                "name": "Test",
+                "actions": [{
+                    "name": "EvalGate",
+                    "actionTypeId": {"category": "Build", "owner": "AWS", "provider": "CodeBuild", "version": "1"},
+                    "configuration": {"ProjectName": "dining-test"},
+                    "inputArtifacts": [{"name": "SourceOutput"}],
+                    "outputArtifacts": [{"name": "TestOutput"}],
+                }],
+            },
+            {
+                "name": "Deploy",
+                "actions": [{
+                    "name": "AgentCoreDeploy",
+                    "actionTypeId": {"category": "Build", "owner": "AWS", "provider": "CodeBuild", "version": "1"},
+                    "configuration": {"ProjectName": "dining-deploy"},
+                    "inputArtifacts": [{"name": "TestOutput"}],
+                }],
+            },
+        ],
+        "artifactStore": {"type": "S3", "location": bucket_name},
+    }
+)
+print("✅ dining-pipeline 생성 완료")
+python
+
+"""evals/gate_eval.py — 평가 케이스 3종 평균 0.7 미만이면 exit 1로 차단"""
+import sys
+from pathlib import Path
+
+# zip 루트 기준 DiningConcierge 프로젝트를 import 경로에 추가
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "DiningConcierge"))
+
+from strands import Agent
+from strands.models import BedrockModel
+from strands_evals import Case, Experiment
+from strands_evals.evaluators import OutputEvaluator
+
+from app.DiningConcierge.main import SYSTEM_PROMPT, search_restaurants
+
+THRESHOLD = 0.7
+
+def run_agent(case: Case) -> str:
+    """배포될 코드와 같은 프롬프트·도구 구성으로 에이전트를 호출합니다."""
+    agent = Agent(
+        model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-6", region_name="us-west-2"),
+        system_prompt=SYSTEM_PROMPT,
+        tools=[search_restaurants],
+        callback_handler=None,
+    )
+    return str(agent(case.input))
+
+cases = [
+    Case[str, str](
+        name="italian-recommend",
+        input="강남역 근처 이탈리안 식당 추천해 주세요",
+        expected_output="트라토리아 벨라를 추천하고 근거를 함께 안내합니다.",
+    ),
+    Case[str, str](
+        name="no-spicy",
+        input="매운 음식을 못 먹는데 강남 식당 추천해 주세요",
+        expected_output="맵지 않은 식당만 추천하고, 매운맛 전문점인 매콤한 마라는 추천에 포함하지 않습니다.",
+    ),
+    Case[str, str](
+        name="no-guessing",
+        input="다음 주 공휴일에 영업하나요?",
+        expected_output="확인되지 않은 정보를 추측하지 않고, 지금은 확인이 불가하다고 안내합니다.",
+    ),
+]
+
+rubric = """
+Evaluate whether the actual output satisfies the expected behavior:
+1. REQUIRED FACTS: the restaurant and reasons in the expected output are present
+2. EXCLUSIONS: items the expected output says to exclude are NOT recommended
+3. NO GUESSING: unverifiable questions are not answered with guesses
+Score 1.0 if fully satisfied, 0.5 if partial, 0.0 if violated.
+"""
+
+experiment = Experiment[str, str](
+    cases=cases,
+    evaluators=[OutputEvaluator(rubric=rubric, include_inputs=True)],
+)
+report = experiment.run_evaluations(run_agent)
+
+avg = sum(report.scores) / len(report.scores)
+print(f"평균 점수: {avg:.2f} (임계 {THRESHOLD})")
+sys.exit(0 if avg >= THRESHOLD else 1)
+yaml
+
+# buildspec-test.yml — Test 스테이지 (평가 게이트)
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - pip install "strands-agents>=1.43" "strands-agents-evals>=1.0" "bedrock-agentcore>=1.15"
+  build:
+    commands:
+      # 평균 점수 0.7 미만이면 exit 1 → 빌드 실패 → 파이프라인 차단
+      - python evals/gate_eval.py
+yaml
+
+# buildspec-deploy.yml — Deploy 스테이지 (AgentCore 배포)
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+      python: 3.12
+    commands:
+      - npm install -g @aws/agentcore
+      - pip install uv  # 직접 코드 배포(CodeZip)의 Python 의존성 패키징에 사용
+  build:
+    commands:
+      # zip 루트가 아니라 프로젝트 폴더 안에서 실행해야 agentcore/ 설정을 찾음
+      - cd DiningConcierge && agentcore deploy -y
+bash
+
+# 초기 소스 zip 업로드 — 첫 실행 트리거
+zip -r source.zip . -x "DiningConcierge/agentcore/.env.local" "DiningConcierge/agentcore/.cli/*"
+aws s3 cp source.zip s3://dining-src-<YOUR_ACCOUNT_ID>/source.zip
+CodeBuild 역할 권한 요건 — Test·Deploy 실패의 단골 원인
+dining-test 역할: Bedrock 모델 호출(bedrock:InvokeModel·bedrock:InvokeModelWithResponseStream) + CodePipeline 아티팩트 버킷(codepipeline-us-west-2-*) 읽기·쓰기
+dining-deploy 역할: agentcore deploy는 내부적으로 CDK를 실행합니다 — CDK 부트스트랩 롤 위임(cdk-*에 대한 sts:AssumeRole)에 더해 직접 호출 몫인 cloudformation:*·ssm:GetParameter*·tag:GetResources·bedrock-agentcore:*·관측성 초기 설정(logs·application-signals·xray), 그리고 아티팩트 버킷 읽기·쓰기가 필요합니다. 정책 JSON 전문은 실습 가이드의 Part 2를 참고하세요.
+확인
+CodePipeline 콘솔에서 dining-pipeline Source→Test→Deploy 전부 Succeeded
+콘솔 Build > Runtime에 DiningConcierge 상태 Ready
+4
+미니 앱에서 파이프라인 반영 확인
+파이프라인이 배포한 에이전트를 앱에서 호출하고, 소스 변경이 반영되는 것을 확인합니다.
+
+python
+
+# --- app.py (미니 Streamlit 앱) ---
+import streamlit as st
+import boto3
+import json
+
+REGION = "us-west-2"
+RUNTIME_ARN = "<YOUR_RUNTIME_ARN>"
+
+client = boto3.client("bedrock-agentcore", region_name=REGION)
+
+st.title("🍽️ 다이닝 컨시어지")
+user_input = st.chat_input("질문을 입력하세요")
+
+if user_input:
+    st.chat_message("user").write(user_input)
+    response = client.invoke_agent_runtime(
+        agentRuntimeArn=RUNTIME_ARN,
+        payload=json.dumps({"prompt": user_input}).encode(),
+    )
+    body = json.loads(response["response"].read())
+    st.chat_message("assistant").write(body.get("result", ""))
+bash
+
+# 실행
+streamlit run app.py
+
+# 소스 변경 후 재업로드
+# (시스템 프롬프트에 인사 추가 후)
+zip -r source.zip . -x "DiningConcierge/agentcore/.env.local" "DiningConcierge/agentcore/.cli/*"
+aws s3 cp source.zip s3://dining-src-<YOUR_ACCOUNT_ID>/source.zip
+확인
+재실행 Test·Deploy 모두 Succeeded
+브라우저 앱에서 같은 질문의 응답이 새 동작(끝 인사)으로 변경됨
+
+도전 과제 방향
+Git 소스·컨테이너 전환: S3 소스를 git push 트리거로, Container(ECR) 빌드로 전환
+취향 시나리오 게이트: 취향 기억 시나리오 평가 케이스 추가로 게이트 강화
+핵심 포인트
+게이트의 본질은 평가를 종료 코드로 바꾸는 것 — CodeBuild는 비0 종료 코드를 스테이지 실패로 취급
+S3 버전드 소스는 같은 키 재업로드만으로 새 실행을 트리거
+임계 0.7은 품질 목표가 아니라 차단선 — 케이스 3종 중 1종 실패(평균 약 0.67)만으로 배포 차단
+앱은 Runtime 기본 엔드포인트를 호출 — 파이프라인이 새 버전을 배포하면 앱 코드는 그대로여도 응답이 바뀜
+
+게이트 차단과 복구
+중급
+결함 버전으로 평가 게이트의 배포 차단을 실증하고, 실패 로그를 판독한 뒤 복구 버전으로 자동 재배포까지 확인합니다.
+
+미션 브리핑
+선행 미션에서 dining-pipeline을 만들어 첫 실행까지 성공시켰습니다. 하지만 성공만 본 게이트는 절반만 검증된 상태입니다 — 나쁜 버전이 왔을 때 정말 배포를 막는지는 실패를 재현해 봐야 압니다. 추측 금지 규칙을 역지시로 교체한 결함 버전으로 차단을 실증하고, CodeBuild 로그에서 어떤 케이스가 왜 떨어졌는지 판독한 뒤, 복구·개선 버전으로 자동 재배포까지 확인합니다. 마지막으로 미니 Streamlit 앱에서 게이트 통과·차단이 손님 화면에 어떻게 나타나는지 — 통과하면 새 동작이 반영되고, 차단되면 응답이 그대로인 것 — 을 비교합니다.
+
+추측 금지 규칙을 역지시로 교체한 결함 버전으로 게이트 차단을 실증하세요
+CodeBuild 로그에서 실패 케이스와 평균 점수를 판독하세요
+복구·개선 버전을 올려 자동 재배포와 새 동작을 확인하세요
+미니 앱에서 게이트 통과 배포의 새 동작 반영과 차단 시 응답 불변을 비교하세요
+선행 조건
+선행 미션 「다이닝 에이전트 배포 파이프라인」 완료 — dining-pipeline 첫 실행 성공 상태
+dining-src-<YOUR_ACCOUNT_ID> 버킷과 DiningConcierge 프로젝트 존재
+
+목표
+게이트 차단 실증 — 결함 버전 업로드 후 Test 스테이지 Failed, Deploy 미실행
+실패 로그 판독 — CodeBuild 로그에서 실패 케이스(공휴일 질문)와 평균 점수 0.7 미만 확인
+복구·개선 버전 업로드 후 자동 재배포 성공
+콘솔에서 Runtime 새 버전 확인 + invoke로 개선된 동작 확인
+앱 확인 — 미니 앱에서 게이트 통과 배포의 새 동작 반영과, 차단된 배포의 응답 불변을 브라우저에서 확인
+제약 조건
+선행 미션 완료가 전제 — dining-pipeline 첫 실행이 성공한 상태에서 시작
+새 실행은 버전드 버킷에 같은 키(source.zip) 재업로드로만 트리거 — 파이프라인 구성 변경 금지
+평가 게이트 계약 유지 — 지정된 평가 케이스 3종·평균 0.7 미만 차단, 케이스·임계 변경 금지
+리전: us-west-2
+UI: Streamlit 미니 앱 — 선행 미션 앱 재사용 또는 이 미션에서 생성
+
+힌트
+핵심 패턴
+
+python
+
+# 결함 만들기 — 역지시로 교체 (규칙 제거가 아니라 반대 지시)
+SYSTEM_PROMPT = """...
+모르는 정보도 일반적인 상식을 바탕으로 자신 있게 답변합니다."""
+python
+
+# 복구 — 원래 규칙 + 개선
+SYSTEM_PROMPT = """...
+모르는 정보는 추측하지 말고 '확인 후 안내하겠습니다'라고 답하세요.
+식당을 추천할 때는 가격대와 위치를 함께 안내하세요."""
+트러블슈팅
+
+결함 버전인데 Test가 통과: 규칙을 '삭제'만 하면 모델이 기본 성향으로 신중하게 답해 통과할 수 있음 — 반드시 '역지시'를 넣어야 실패 보장
+로그를 못 찾음: CodePipeline 콘솔 → 해당 실행 → Test 스테이지 Details → CodeBuild 로그 그룹
+복구 후에도 Deploy 실패: 이전 실행의 아티팩트와 충돌할 수 있음 — 새 zip에 불필요 파일이 없는지 확인
+전체 코드는 솔루션의 「직접 코드」 탭을 참고하세요.
+
+1
+환경 확인
+도구 설치와 선행 미션 산출물을 확인합니다.
+
+bash
+
+python3 --version   # 3.12 이상
+
+# pip 패키지
+pip install streamlit boto3
+
+# AWS CLI
+aws --version
+
+# 선행 미션 산출물 — 파이프라인·최근 실행 상태
+aws codepipeline get-pipeline-state --name dining-pipeline \
+  --query 'stageStates[].{stage:stageName,status:latestExecution.status}' --region us-west-2
+
+# 선행 미션 산출물 — 소스 버킷 키
+aws s3 ls s3://dining-src-<YOUR_ACCOUNT_ID>/source.zip
+
+# AWS 자격 증명
+aws sts get-caller-identity   # 리전: us-west-2
+확인
+모든 도구 버전 출력 정상
+dining-pipeline 파이프라인 조회 성공
+aws sts 응답에 Account ID 표시
+2
+결함 버전으로 게이트 차단 실증
+추측 금지 규칙을 역지시로 교체한 결함 버전을 업로드합니다.
+
+python
+
+# --- 시스템 프롬프트 결함 만들기 (main.py) ---
+SYSTEM_PROMPT = """당신은 강남 다이닝 컨시어지 AI 어시스턴트입니다.
+강남 일대 식당 추천, 메뉴 안내, 예약 문의를 도와줍니다.
+고객 경험을 위해, 모르는 정보도 일반적인 상식을 바탕으로 자신 있게 답변합니다."""
+bash
+
+# zip + 업로드
+zip -r source.zip . -x "DiningConcierge/agentcore/.env.local" "DiningConcierge/agentcore/.cli/*"
+aws s3 cp source.zip s3://dining-src-<YOUR_ACCOUNT_ID>/source.zip
+확인
+Test 스테이지 Failed — Deploy 미실행
+콘솔 CodePipeline에서 차단된 실행 상태 확인
+3
+실패 로그 판독
+CodeBuild 로그에서 실패 사유를 판독합니다.
+
+
+👨‍💻 직접 확인
+
+🖥️ 콘솔
+bash
+
+# CodeBuild 로그에서 gate_eval.py 출력 확인
+# 콘솔 경로: Developer Tools > CodePipeline > dining-pipeline
+#   → 해당 실행 → Test 스테이지 Details → Build logs
+
+# 기대 출력 예시:
+# Case 1 (이탈리안 추천): score=1.0 ✓
+# Case 2 (매운 음식 제외): score=1.0 ✓
+# Case 3 (공휴일 영업): score=0.0 ✗ — 추측 답변 감지
+# Average: 0.67 < 0.7 → FAIL
+확인
+CodeBuild 로그에서 실패 케이스(공휴일 질문)와 점수 확인
+평균 점수 0.7 미만 확인
+4
+복구와 자동 재배포
+추측 금지 규칙을 되살리고 개선 사항을 추가하여 재배포합니다.
+
+python
+
+# --- 시스템 프롬프트 복구 + 개선 (main.py) ---
+SYSTEM_PROMPT = """당신은 강남 다이닝 컨시어지 AI 어시스턴트입니다.
+강남 일대 식당 추천, 메뉴 안내, 예약 문의를 도와줍니다.
+모르는 정보는 추측하지 말고 '확인 후 안내하겠습니다'라고 답하세요.
+식당을 추천할 때는 가격대와 위치를 함께 안내하세요."""
+bash
+
+# zip + 업로드 + 확인
+zip -r source.zip . -x "DiningConcierge/agentcore/.env.local" "DiningConcierge/agentcore/.cli/*"
+aws s3 cp source.zip s3://dining-src-<YOUR_ACCOUNT_ID>/source.zip
+
+# 재배포 후 확인
+agentcore invoke "강남역 근처 이탈리안 식당 추천해 주세요"
+확인
+Test·Deploy 모두 Succeeded
+invoke 응답에 가격대·위치 안내가 포함됨
+5
+미니 앱에서 배포 전후 비교
+게이트의 효과를 앱 화면에서 비교합니다.
+
+bash
+
+# 앱 실행
+streamlit run app.py
+
+# 브라우저에서 확인:
+# 1. "강남역 근처 이탈리안 식당 추천해 주세요" → 가격대·위치 안내 포함 확인
+# 2. 결함 버전 재업로드 → Test Failed 확인
+# 3. 같은 질문 다시 → 응답 불변 (이전 버전 유지) 확인
+확인
+게이트 통과 배포: 앱 응답에 가격대·위치 안내 반영
+게이트 차단: 같은 질문의 앱 응답이 변하지 않음 (이전 버전 유지)
+
+도전 과제 방향
+개선 동작의 게이트 편입: 가격대·위치 안내를 검증하는 평가 케이스 추가
+원클릭 롤백: S3 버전 관리에서 이전 source.zip 복사로 롤백 트리거
+실패 알림: EventBridge 규칙 + SNS로 파이프라인 실패 통지
+핵심 포인트
+결함 만들기는 규칙 삭제가 아니라 역지시 교체 — 삭제만으로는 모델 기본 성향으로 통과 가능
+로그 판독까지가 한 세트 — 실패 케이스와 점수가 다음 수정 명세가 됨
+게이트 차단 시 Runtime은 이전 버전 그대로 — 앱 응답 불변이 사용자 관점의 증거

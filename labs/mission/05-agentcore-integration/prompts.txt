@@ -1,0 +1,969 @@
+시리즈 5: AgentCore 통합
+시리즈 개요
+「AgentCore 배포」에서 다이닝 에이전트를 Runtime에 올렸습니다. 배포된 에이전트는 아직 몸만 있는 상태입니다 — 이 시리즈에서 능력을 붙입니다. Gateway에 KB 검색 Lambda 타깃을 연결해 식당 지식을 도구로 제공하고, AgentCore Memory로 "이탈리안을 좋아하고 매운 음식을 못 먹어요" 같은 취향을 세션 간 기억시키고, 마지막으로 Runtime·Gateway·Memory를 모두 쓰는 Streamlit 프로덕션 다이닝 앱으로 통합합니다.
+
+아키텍처
+아키텍처
+KB 검색 Lambda
+사용자
+Streamlit 프로덕션 앱
+AgentCore Runtime —다이닝 에이전트
+Gateway
+Knowledge Base — 식당가이드
+AgentCore Memory —취향 기억
+시작 조건
+AWS 계정 (Bedrock + AgentCore 접근 권한)
+AgentCore CLI 설치, Python 3.12+
+일부 미션은 다른 미션의 산출물을 전제합니다 — 구체적인 선행 관계는 각 미션의 선행 미션 목록에 표시됩니다
+리전: us-west-2
+
+Gateway로 도구 연결
+중급
+Gateway에 KB 검색 Lambda 타깃을 붙이고 배포된 에이전트에 결선합니다.
+
+미션 브리핑
+Runtime에 배포된 다이닝 에이전트는 아직 자기 코드에 내장된 도구만 씁니다. AgentCore Gateway를 사이에 두면 인증·관측·도구 관리를 중앙화할 수 있고, 도구를 추가할 때 에이전트 코드를 고칠 필요가 없어집니다.
+
+이 미션에서는:
+
+식당 가이드 Knowledge Base를 검색하는 Lambda를 만들고
+Gateway의 Lambda 타깃으로 붙여 KB 검색을 MCP 도구로 노출한 뒤
+배포된 에이전트가 Gateway의 도구를 쓰도록 결선합니다
+선행 조건
+선행 미션에서 배포한 DiningConcierge (READY 상태)
+선행 미션에서 만든 dining-concierge-kb (KB ID 필요)
+
+목표
+KB 검색 Lambda dining-kb-search 생성
+Gateway dining-gateway 생성 + Lambda 타깃 추가
+DiningConcierge에 Gateway MCP 도구 결선 후 재배포
+invoke 응답에 KB 근거 포함
+Streamlit 챗에서 KB 근거 포함 응답 확인
+제약 조건
+Gateway Inbound 인증: IAM(SigV4) — No authorization 금지
+KB 검색: Lambda 타깃으로 노출 (커넥터 타깃은 Managed KB 전용)
+UI: 미니 Streamlit 챗 (본격 앱은 후속 미션)
+리전: us-west-2
+선행 미션
+AgentCore Runtime 배포 — AgentCore CLI로 다이닝 에이전트 코드를 Runtime에 배포하고 호출 검증 · 🔑 솔루션
+KB 구축 — 식당 데이터로 KB를 생성하고 시맨틱 검색 확인 · 🔑 솔루션
+
+1
+환경 확인
+bash
+
+python3 --version
+pip install "strands-agents>=1.43" "mcp>=1.27" mcp-proxy-for-aws boto3
+agentcore --version
+aws --version
+aws sts get-caller-identity --region us-west-2
+확인
+모든 도구 버전 출력 정상
+aws sts 응답에 Account ID 표시
+2
+KB 검색 Lambda 준비
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+python
+
+# lambda_function.py
+import os
+import boto3
+
+agent_rt = boto3.client("bedrock-agent-runtime", region_name="us-west-2")
+
+def lambda_handler(event, context):
+    tool_name = context.client_context.custom["bedrockAgentCoreToolName"].split("___")[-1]
+    if tool_name == "search_knowledge_base":
+        resp = agent_rt.retrieve(
+            knowledgeBaseId=os.environ["KB_ID"],
+            retrievalQuery={"text": event["query"]},
+        )
+        chunks = [r["content"]["text"] for r in resp["retrievalResults"]]
+        return {"content": [{"type": "text", "text": "\n\n".join(chunks)}]}
+    return {"content": [{"type": "text", "text": f"알 수 없는 도구: {tool_name}"}]}
+IAM 인라인 정책 (Lambda 실행 역할에 부여):
+
+json
+
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Action": "bedrock:Retrieve",
+        "Resource": "arn:aws:bedrock:us-west-2:<YOUR_ACCOUNT_ID>:knowledge-base/<YOUR_KB_ID>"
+    }]
+}
+확인
+Lambda 콘솔에서 dining-kb-search 상태 Active
+실행 역할 정책에 bedrock:Retrieve 포함
+3
+Gateway 생성과 타깃 추가
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+python
+
+import boto3
+
+client = boto3.client("bedrock-agentcore-control", region_name="us-west-2")
+
+GATEWAY_ROLE_ARN = "<YOUR_GATEWAY_ROLE_ARN>"  # 사전 생성 또는 콘솔 Create default role이 만든 역할
+LAMBDA_ARN = "<YOUR_LAMBDA_ARN>"              # dining-kb-search 함수의 ARN
+
+# Gateway 생성
+gw = client.create_gateway(
+    name="dining-gateway",
+    protocolType="MCP",      # 필수 — 현재 MCP만 지원
+    authorizerType="AWS_IAM",
+    roleArn=GATEWAY_ROLE_ARN,
+)
+gateway_id = gw["gatewayId"]
+print(f"Gateway ID: {gateway_id}, Status: {gw['status']}")
+
+# Lambda 타깃 추가
+tool_schema = [{
+    "name": "search_knowledge_base",
+    "description": "Knowledge Base에서 식당 정보를 검색합니다",
+    "inputSchema": {
+        "type": "object",
+        "properties": {"query": {"type": "string", "description": "검색 질의"}},
+        "required": ["query"]
+    }
+}]
+
+client.create_gateway_target(
+    gatewayIdentifier=gateway_id,
+    name="dining-kb-search",
+    targetConfiguration={
+        "mcp": {
+            "lambda": {
+                "lambdaArn": LAMBDA_ARN,
+                "toolSchema": {"inlinePayload": tool_schema},
+            }
+        }
+    },
+    credentialProviderConfigurations=[
+        {"credentialProviderType": "GATEWAY_IAM_ROLE"}
+    ],
+)
+확인
+콘솔 > Build > Gateways에서 dining-gateway 상태 READY
+타깃 목록에 dining-kb-search 표시
+4
+에이전트에 Gateway 결선
+python
+
+# app/DiningConcierge/main.py — 엔트리포인트 안에서 결선
+from strands import Agent
+from strands.models import BedrockModel
+from strands.tools.mcp import MCPClient
+from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
+from bedrock_agentcore import BedrockAgentCoreApp
+
+# 💡 선행 미션의 식당 도구 — check_reservations는 로컬 MCP 서버 의존이라 제외
+from tools import search_restaurants, get_menu
+
+GATEWAY_URL = "https://<YOUR_GATEWAY_ID>.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp"
+
+model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-6")
+app = BedrockAgentCoreApp()
+
+@app.entrypoint
+def invoke(payload):
+    gateway_client = MCPClient(
+        lambda: aws_iam_streamablehttp_client(
+            endpoint=GATEWAY_URL,
+            aws_region="us-west-2",
+            aws_service="bedrock-agentcore",
+        )
+    )
+    with gateway_client:
+        # 💡 Gateway 도구 + 선행 미션의 로컬 식당 도구를 함께 사용합니다
+        agent = Agent(
+            model=model,
+            tools=gateway_client.list_tools_sync() + [search_restaurants, get_menu],
+        )
+        return {"result": str(agent(payload.get("prompt", "")))}
+
+if __name__ == "__main__":
+    app.run()
+Runtime 실행 역할에 추가할 인라인 정책:
+
+json
+
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Action": "bedrock-agentcore:InvokeGateway",
+        "Resource": "arn:aws:bedrock-agentcore:us-west-2:<YOUR_ACCOUNT_ID>:gateway/<YOUR_GATEWAY_ID>"
+    }]
+}
+확인
+main.py에 Gateway MCP 클라이언트 코드 추가됨
+실행 역할에 InvokeGateway 정책 부여됨
+5
+재배포와 검증
+bash
+
+# 재배포
+agentcore deploy -y
+
+# 검증
+agentcore invoke "트라토리아 벨라의 대표 메뉴와 최대 몇 명까지 예약 가능한지 알려 주세요"
+확인
+콘솔에서 상태 Ready, 버전 +1
+응답에 대표 메뉴 정보 포함
+응답에 예약 가능 인원 포함
+6
+미니 챗 UI
+python
+
+# app.py
+import json
+import uuid
+import boto3
+import streamlit as st
+
+client = boto3.client("bedrock-agentcore", region_name="us-west-2")
+RUNTIME_ARN = "<YOUR_RUNTIME_ARN>"
+
+st.title("🍽️ 다이닝 컨시어지")
+
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
+
+if prompt := st.chat_input("질문을 입력하세요"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+
+    response = client.invoke_agent_runtime(
+        agentRuntimeArn=RUNTIME_ARN,
+        runtimeSessionId=st.session_state.session_id,
+        payload=json.dumps({"prompt": prompt}).encode("utf-8"),
+    )
+    # 💡 응답은 response 블롭 — read()로 꺼내 JSON 파싱합니다
+    body = response["response"].read().decode("utf-8")
+    try:
+        result_text = json.loads(body).get("result", body)
+    except json.JSONDecodeError:
+        result_text = body
+
+    st.session_state.messages.append({"role": "assistant", "content": result_text})
+    st.chat_message("assistant").write(result_text)
+bash
+
+streamlit run app.py
+확인
+브라우저 챗에서 KB 근거가 포함된 응답 표시
+
+Web Search 타깃 추가: Gateway 콘솔에서 target protocol을 MCP target, target type을 Connectors로 지정하면 사전 구성된 Web Search tool을 타깃으로 붙일 수 있습니다 — 파라미터(domainFilter 등)를 코드로 다루는 절차는 AgentCore Web Search 실습에서 다룹니다.
+두 번째 Lambda 타깃: 같은 Gateway에 타깃을 하나 더 추가하면 에이전트 코드는 그대로인 채 list_tools의 도구 수만 늘어납니다 — 새 타깃도 스키마(name/description/inputSchema)를 명시해야 MCP 도구 목록에 나타납니다.
+자동화: 콘솔로 만든 구성을 boto3(create_gateway·create_gateway_target)로 재현하는 코드는 AgentCore Gateway 실습의 심화 과제에 있습니다 — Gateway 역할은 콘솔의 Create default role이 만들어 주던 것을 직접 준비해야 합니다.
+
+AgentCore Memory로 고객 취향 기억
+중급
+AgentCore Memory를 연동하여 고객의 음식 취향을 세션 간 유지합니다.
+
+미션 브리핑
+고객이 "저는 이탈리안을 좋아하고 매운 음식을 못 먹어요"라고 말하면 다음 세션에서도 이 취향이 반영되어야 합니다. AgentCore Memory를 에이전트에 연동하여 취향을 자동 추출하고 세션 간 유지합니다.
+
+이 미션에서는:
+
+semantic 전략의 AgentCore Memory를 만들고
+강남 식당 추천 에이전트에 연동해 대화에서 취향을 자동 추출하게 한 뒤
+새 세션에서 취향이 반영되는지 검증 스크립트와 미니 Streamlit 챗으로 확인합니다
+
+목표
+Memory dining_memory 생성 (semantic 전략, 상태 ACTIVE)
+에이전트에 Memory 연동 (retrieval_config 포함) 후 정상 응답
+새 세션: "강남 식당 추천해 주세요"만 입력 → 이탈리안 위주 + 맵지 않은 식당 추천
+Streamlit 미니 챗에서 새 세션 취향 반영 확인
+제약 조건
+AgentCore Memory semantic 전략 사용
+콘솔에서 Memory 생성 상태 확인 필수
+최소 2개 세션에서 취향 유지 확인
+UI: Streamlit 미니 챗(새 세션 시작 버튼 포함) — 본격적인 개인화 다이닝 앱은 후속 미션에서 만드니, 여기서는 미니 확인 수준으로
+리전: us-west-2
+
+1
+환경 확인
+bash
+
+python3 --version
+pip install "strands-agents>=1.43" "bedrock-agentcore[strands-agents]>=1.15" boto3
+aws --version
+aws sts get-caller-identity --region us-west-2
+확인
+모든 도구 버전 출력 정상
+aws sts 응답에 Account ID 표시
+2
+Memory 생성
+semantic 전략의 Memory를 만듭니다.
+
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+python
+
+# create_memory.py — 콘솔 대안
+from bedrock_agentcore.memory import MemoryClient
+
+client = MemoryClient(region_name="us-west-2")
+
+# 💡: create_memory_and_wait — 생성 후 ACTIVE가 될 때까지 폴링
+#     생성 직후 CREATING 상태에서는 이벤트 저장이 실패하므로 대기가 필요합니다
+memory = client.create_memory_and_wait(
+    name="dining_memory",
+    strategies=[{"semanticMemoryStrategy": {"name": "dining_facts"}}],
+    event_expiry_days=30,
+)
+print(f"✅ Memory 생성 완료 (ACTIVE): {memory['id']}")
+확인
+콘솔 > Build > Memory 목록에 dining_memory 표시
+상세 페이지 전략 목록에 Semantic 전략 표시
+3
+Memory ID·전략 ID 확인
+Memory가 ACTIVE가 된 뒤 에이전트 연동에 필요한 ID 2개를 확보합니다.
+
+
+👨‍💻 직접 확인
+
+🖥️ 콘솔
+bash
+
+# 상태 확인 — ACTIVE가 될 때까지 수 분 걸릴 수 있습니다
+aws bedrock-agentcore-control get-memory \
+  --memory-id "<YOUR_MEMORY_ID>" \
+  --query "memory.status" --output text
+
+# SEMANTIC 전략 ID 확인
+aws bedrock-agentcore-control get-memory \
+  --memory-id "<YOUR_MEMORY_ID>" \
+  --query "memory.strategies[].[type,strategyId]" --output table
+확인
+콘솔 > Build > Memory에서 dining_memory 상태 ACTIVE
+터미널에서 get-memory 실행 → SEMANTIC 전략 ID 출력
+4
+에이전트에 Memory 연동
+dining_agent_memory.py에 Memory 연동 강남 식당 추천 에이전트를 만듭니다.
+
+python
+
+# dining_agent_memory.py — Memory 연동 강남 식당 추천 에이전트
+from strands import Agent, tool
+from strands.models import BedrockModel
+from bedrock_agentcore.memory.integrations.strands.config import (
+    AgentCoreMemoryConfig,
+    RetrievalConfig,
+)
+from bedrock_agentcore.memory.integrations.strands.session_manager import (
+    AgentCoreMemorySessionManager,
+)
+
+REGION = "us-west-2"
+MEMORY_ID = "<YOUR_MEMORY_ID>"                        # 단계 3에서 복사한 값
+SEMANTIC_STRATEGY_ID = "<YOUR_SEMANTIC_STRATEGY_ID>"  # 단계 3에서 확인한 SEMANTIC 전략 ID
+
+# --- 도구 ---
+@tool
+def search_restaurants(location: str, cuisine: str) -> str:
+    """식당을 검색합니다."""
+    data = {
+        "이탈리안": "트라토리아 벨라 (강남역 3분, 45,000원, ★4.5)",
+        "한식": "한우명가 (역삼역 5분, 65,000원, ★4.3)",
+        "프렌치": "르 비스트로 (압구정역 2분, 90,000원, ★4.6)",
+    }
+    return data.get(cuisine, f"{cuisine} 식당을 찾지 못했습니다.")
+
+# --- 에이전트 생성 함수 — session_id/actor_id를 바꿔 끼울 수 있게 ---
+def create_agent(session_id: str, actor_id: str = "user-001") -> Agent:
+    #      키 = 검색할 네임스페이스(빌트인 기본형: /strategy/{전략ID}/actors/{actorId}/)
+💡
+    #      {actorId}는 실행 시 actor_id 값으로 자동 치환됩니다
+    config = AgentCoreMemoryConfig(
+        memory_id=MEMORY_ID,
+        actor_id=actor_id,
+        session_id=session_id,
+        retrieval_config={
+            "/strategy/" + SEMANTIC_STRATEGY_ID + "/actors/{actorId}/":
+                RetrievalConfig(top_k=5, relevance_score=0.3),
+        },
+    )
+    session_manager = AgentCoreMemorySessionManager(
+        agentcore_memory_config=config,
+        region_name=REGION,
+    )
+    return Agent(
+        model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-6"),
+        system_prompt="강남 식당 추천 전문가. 사용자의 이전 취향을 기억해 반영합니다.",
+        tools=[search_restaurants],
+        session_manager=session_manager,  # ← Memory 연결
+        callback_handler=None,  # 스트리밍 중간 출력 억제 — 최종 print만 표시
+    )
+
+if __name__ == "__main__":
+    agent = create_agent(session_id="session-dining-000")
+💡
+    print(agent("강남에서 어떤 식당을 추천해 줄 수 있나요?"))
+확인
+dining_agent_memory.py의 retrieval_config에 시맨틱 네임스페이스 지정
+터미널에서 python3 dining_agent_memory.py 실행 → 에이전트 응답 출력
+5
+세션 간 취향 검증
+test_memory.py로 2개 세션 시나리오를 검증합니다.
+
+python
+
+# test_memory.py — 세션 간 취향 기억 검증 (2세션 시나리오)
+import time
+from dining_agent_memory import create_agent
+
+# --- 세션 1: 취향 입력 ---
+print("=== 세션 1 (session-dining-001): 취향 입력 ===")
+agent1 = create_agent(session_id="session-dining-001")
+print(agent1("이탈리안 좋아해요, 매운 음식 못 먹어요"))
+
+print("\n장기 기억 추출 대기 중 (90초)...")
+💡
+time.sleep(90)
+
+# --- 세션 2: 새 session_id, 같은 actor_id ---
+print("=== 세션 2 (session-dining-002): 추천만 요청 ===")
+💡
+agent2 = create_agent(session_id="session-dining-002")
+print(agent2("강남 식당 추천해 주세요"))
+bash
+
+python3 test_memory.py
+세션2가 기억을 못 하면 추출이 아직 끝나지 않은 것입니다 — 잠시 후 다시 실행합니다.
+
+확인
+세션2 응답이 이탈리안 위주 식당 추천
+세션2 응답에 매운 음식 제외 반영
+6
+미니 챗 UI
+Memory 연동 에이전트와 대화하는 미니 Streamlit 챗을 만듭니다.
+
+python
+
+# app.py — Memory 연동 에이전트의 미니 Streamlit 챗
+import uuid
+import streamlit as st
+from dining_agent_memory import create_agent
+
+st.title("🍽️ 다이닝 컨시어지 — 취향 기억")
+
+if "session_id" not in st.session_state:
+💡
+    st.session_state.session_id = f"session-dining-{uuid.uuid4().hex[:8]}"
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if st.button("새 세션 시작"):
+💡
+    st.session_state.session_id = f"session-dining-{uuid.uuid4().hex[:8]}"
+    st.session_state.messages = []
+    st.rerun()
+
+st.caption(f"세션: {st.session_state.session_id} · 사용자: user-001")
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
+
+if prompt := st.chat_input("질문을 입력하세요"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+
+    agent = create_agent(session_id=st.session_state.session_id)
+💡
+    result_text = str(agent(prompt))
+
+    st.session_state.messages.append({"role": "assistant", "content": result_text})
+    st.chat_message("assistant").write(result_text)
+bash
+
+pip install streamlit
+streamlit run app.py
+확인
+브라우저에서 "새 세션 시작" 클릭 → 대화 표시가 비워짐
+새 세션에서 취향 반영 추천이 브라우저 챗 화면에 표시
+
+도전 과제 방향
+지난번 그 식당: 세션 1의 대화에 추천받은 식당 이름이 남아 있어야 semantic 전략이 사실로 추출합니다 — 같은 actor_id로 새 session_id를 발급해(create_agent) 회상 질문을 보냅니다. 추출이 비동기라 1~2분 대기가 필요하고, 회상이 걸러지면 RetrievalConfig의 relevance_score(0.3)를 낮춰 확인하세요.
+멀티 사용자: create_agent의 actor_id를 user-002 등으로 바꾸면 됩니다 — 장기 기억 네임스페이스의 {actorId} 치환이 고객별 격리를 만듭니다. 한 사용자의 취향 입력이 다른 사용자의 추천에 섞이지 않는지 교차로 확인하세요. 같은 방향이 AgentCore Memory 연동 실습의 도전 과제에 있습니다.
+Streamlit 연결: 단계 6의 app.py가 골격입니다 — 사이드바에 사용자 선택 UI를 더해 선택값을 create_agent의 actor_id로 전달하면 고객별 개인화 다이닝 앱이 됩니다. 상세 구성은 후속 미션이 다룹니다.
+
+핵심 포인트
+AgentCore Memory는 대화 원본을 단기 기억(Event)으로 저장하고, semantic 전략이 백그라운드에서 핵심 사실을 장기 기억으로 추출합니다 — eventExpiryDuration(이벤트 보존 기간)은 단기 기억에만 적용됩니다
+AgentCoreMemorySessionManager는 Strands Agent의 session_manager에 연결하여 대화를 자동으로 Memory에 저장합니다 — 장기 기억 검색은 retrieval_config를 지정해야 동작합니다(미지정 시 저장만 됨)
+빌트인 전략의 장기 기억은 /strategy/{전략ID}/actors/{actorId}/ 네임스페이스에 저장됩니다 — 그래서 전략 ID 확인 단계가 필요합니다
+같은 actor_id + 다른 session_id → 이전 세션에서 추출된 취향이 자동으로 컨텍스트에 주입됩니다
+장기 기억 추출은 비동기로 처리되므로 세션 간 테스트 시 1~2분 정도 대기가 필요합니다
+
+Streamlit 프로덕션 다이닝 앱
+고급
+AgentCore Runtime + Gateway + Memory를 Streamlit으로 연결한 프로덕션 앱을 완성합니다.
+
+미션 브리핑
+이 시리즈에서 배포한 AgentCore Runtime, Gateway(Knowledge Base), Memory를 모두 활용하는 Streamlit 프로덕션 앱을 만듭니다. 고객 취향을 기억하고, KB에서 식당 상세 가이드를 제공하는 통합 다이닝 앱입니다.
+
+이 미션에서는:
+
+배포된 Runtime을 프로덕션 앱용으로 보강(Memory 연동 + 도구 호출 내역 반환)해 재배포하고
+Runtime 호출·취향 조회 클라이언트 2개를 만든 뒤
+채팅 + KB 상세 카드 + 취향 사이드바를 갖춘 Streamlit 앱으로 완성합니다
+
+목표
+Streamlit 앱에서 AgentCore Runtime 호출 성공
+KB 결과(식당 상세 정보)가 카드로 표시
+Memory 취향이 새 세션에서도 추천에 반영
+사이드바에 취향 요약 + 도구 호출 로그 표시
+제약 조건
+HTTP(boto3 invoke_agent_runtime)로 Runtime 호출
+에러 핸들링 포함 (Runtime 타임아웃, Gateway 실패)
+사이드바에 취향 + 도구 로그 필수
+리전: us-west-2
+
+1
+환경 확인
+bash
+
+python3 --version
+pip install "strands-agents>=1.43" "bedrock-agentcore[strands-agents]>=1.15" boto3 streamlit
+agentcore --version   # 없으면: npm install -g @aws/agentcore
+aws --version
+aws sts get-caller-identity --region us-west-2
+확인
+모든 도구 버전 출력 정상
+aws sts 응답에 Account ID 표시
+2
+선행 산출물 확인
+이 미션이 조립하는 선행 미션 산출물 3개의 상태와 식별자를 확인합니다.
+
+
+👨‍💻 직접 확인
+
+🖥️ 콘솔
+bash
+
+# Runtime — 상태와 ARN (선행 미션 배포 산출물)
+aws bedrock-agentcore-control list-agent-runtimes --region us-west-2 \
+  --query "agentRuntimes[?agentRuntimeName=='DiningConcierge'].[status,agentRuntimeArn]" --output table
+
+# Gateway — dining-gateway READY 확인 (타깃은 콘솔 상세 페이지에서 확인)
+aws bedrock-agentcore-control list-gateways --region us-west-2
+
+# Memory — dining_memory ACTIVE + Memory ID 확인
+aws bedrock-agentcore-control list-memories --region us-west-2
+
+# SEMANTIC 전략 ID 확인
+aws bedrock-agentcore-control get-memory \
+  --memory-id "<YOUR_MEMORY_ID>" \
+  --query "memory.strategies[].[type,strategyId]" --output table
+확인
+콘솔 > Build > Runtime에서 DiningConcierge 상태 Ready, Runtime ARN 복사됨
+콘솔 > Build > Gateways에서 dining-gateway 상태 READY, 타깃 dining-kb-search 표시
+콘솔 > Build > Memory에서 dining_memory 상태 ACTIVE, Memory ID·전략 ID 복사됨
+3
+Runtime 보강 재배포
+배포된 DiningConcierge를 프로덕션 앱용으로 보강해 재배포합니다.
+
+python
+
+# app/DiningConcierge/main.py — Gateway 결선 유지 + Memory 연동 + tool_calls 반환
+from strands import Agent
+from strands.models import BedrockModel
+from strands.tools.mcp import MCPClient
+from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
+from bedrock_agentcore import BedrockAgentCoreApp
+from bedrock_agentcore.memory.integrations.strands.config import (
+    AgentCoreMemoryConfig,
+    RetrievalConfig,
+)
+from bedrock_agentcore.memory.integrations.strands.session_manager import (
+    AgentCoreMemorySessionManager,
+)
+
+# 💡 선행 미션의 식당 도구 — check_reservations는 로컬 MCP 서버 의존이라 제외
+from tools import search_restaurants, get_menu
+
+REGION = "us-west-2"
+GATEWAY_URL = "https://<YOUR_GATEWAY_ID>.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp"
+MEMORY_ID = "<YOUR_MEMORY_ID>"                        # 단계 2에서 복사한 값
+SEMANTIC_STRATEGY_ID = "<YOUR_SEMANTIC_STRATEGY_ID>"  # 단계 2에서 복사한 값
+
+model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-6")
+app = BedrockAgentCoreApp()
+
+@app.entrypoint
+def invoke(payload):
+    session_id = payload.get("session_id", "session-dining-default-000000000000")
+💡
+    actor_id = payload.get("actor_id", "user-001")
+
+    config = AgentCoreMemoryConfig(
+        memory_id=MEMORY_ID,
+        actor_id=actor_id,
+        session_id=session_id,
+        retrieval_config={
+            "/strategy/" + SEMANTIC_STRATEGY_ID + "/actors/{actorId}/":
+                RetrievalConfig(top_k=5, relevance_score=0.3),
+        },
+    )
+    session_manager = AgentCoreMemorySessionManager(
+        agentcore_memory_config=config,
+        region_name=REGION,
+    )
+
+    gateway_client = MCPClient(
+        lambda: aws_iam_streamablehttp_client(
+            endpoint=GATEWAY_URL,
+            aws_region=REGION,
+            aws_service="bedrock-agentcore",
+        )
+    )
+    with gateway_client:
+        agent = Agent(
+            model=model,
+            system_prompt="당신은 강남 다이닝 컨시어지 AI입니다. 사용자의 이전 취향을 기억해 반영합니다.",
+            # 💡 Gateway 도구 + 선행 미션의 로컬 식당 도구를 함께 사용합니다
+            tools=gateway_client.list_tools_sync() + [search_restaurants, get_menu],
+            session_manager=session_manager,
+        )
+        before = len(agent.messages)
+💡
+        result = agent(payload.get("prompt", ""))
+        tool_calls = [
+            {"name": b["toolUse"]["name"], "input": b["toolUse"]["input"]}
+            for m in agent.messages[before:]
+            for b in m.get("content", [])
+            if isinstance(b, dict) and "toolUse" in b
+        ]
+        return {"result": str(result), "tool_calls": tool_calls}
+
+if __name__ == "__main__":
+    app.run()
+Runtime 실행 역할에 추가할 인라인 정책 (Memory 데이터 플레인):
+
+json
+
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Action": [
+            "bedrock-agentcore:CreateEvent",
+            "bedrock-agentcore:ListEvents",
+            "bedrock-agentcore:ListSessions",
+            "bedrock-agentcore:RetrieveMemoryRecords"
+        ],
+        "Resource": "arn:aws:bedrock-agentcore:us-west-2:<YOUR_ACCOUNT_ID>:memory/<YOUR_MEMORY_ID>"
+    }]
+}
+bash
+
+agentcore deploy -y
+확인
+콘솔 > Build > Runtime에서 DiningConcierge 상태 Ready, 버전 +1
+실행 역할 정책에 Memory 데이터 플레인 권한 포함
+4
+클라이언트 작성
+Runtime 호출과 취향 조회 클라이언트 2개를 만듭니다.
+
+python
+
+# agent_client.py — 배포된 DiningConcierge Runtime 호출 클라이언트
+import json
+
+import boto3
+
+REGION = "us-west-2"
+RUNTIME_ARN = "<YOUR_AGENT_RUNTIME_ARN>"  # 단계 2에서 복사한 값
+
+client = boto3.client("bedrock-agentcore", region_name=REGION)
+control = boto3.client("bedrock-agentcore-control", region_name=REGION)
+
+def invoke_agent(prompt: str, session_id: str, actor_id: str) -> dict:
+    # 💡: runtimeSessionId는 33자 이상 — 같은 값은 같은 세션(멱등)
+    response = client.invoke_agent_runtime(
+        agentRuntimeArn=RUNTIME_ARN,
+        runtimeSessionId=session_id,
+        qualifier="DEFAULT",
+        payload=json.dumps(
+            {"prompt": prompt, "session_id": session_id, "actor_id": actor_id}
+        ).encode("utf-8"),
+    )
+    body = response["response"].read().decode("utf-8")
+    try:
+        return json.loads(body)  # {"result": ..., "tool_calls": [...]}
+    except json.JSONDecodeError:
+        return {"result": body, "tool_calls": []}
+
+def get_runtime_status() -> str:
+    for rt in control.list_agent_runtimes()["agentRuntimes"]:
+        if rt["agentRuntimeName"] == "DiningConcierge":
+            return rt["status"]
+    return "NOT_FOUND"
+
+if __name__ == "__main__":
+    print("Runtime:", get_runtime_status())
+    print(invoke_agent("강남 식당 추천해 주세요", "session-app-test-000000000000000000", "user-001"))
+python
+
+# memory_client.py — Memory 취향 조회 클라이언트
+from bedrock_agentcore.memory import MemoryClient
+
+REGION = "us-west-2"
+MEMORY_ID = "<YOUR_MEMORY_ID>"                        # 단계 2에서 복사한 값
+SEMANTIC_STRATEGY_ID = "<YOUR_SEMANTIC_STRATEGY_ID>"  # 단계 2에서 복사한 값
+
+client = MemoryClient(region_name=REGION)
+
+def get_preferences(actor_id: str) -> list[str]:
+    # 💡: 빌트인 전략의 장기 기억 네임스페이스 — /strategy/{전략ID}/actors/{actorId}/
+    memories = client.retrieve_memories(
+        memory_id=MEMORY_ID,
+        namespace=f"/strategy/{SEMANTIC_STRATEGY_ID}/actors/{actor_id}/",
+        query="고객의 음식 취향",
+    )
+    return [m["content"]["text"] for m in memories]
+
+if __name__ == "__main__":
+    print(get_preferences("user-001"))
+bash
+
+python3 agent_client.py
+python3 memory_client.py
+확인
+터미널에서 python3 agent_client.py 실행 → Runtime 상태와 응답 출력
+터미널에서 python3 memory_client.py 실행 → 오류 없이 취향 목록 출력
+5
+채팅 UI
+Streamlit 채팅 UI에서 Runtime 응답을 표시합니다.
+
+python
+
+# app.py — 1차: 채팅 UI (Runtime 호출)
+import uuid
+
+import streamlit as st
+
+from agent_client import invoke_agent
+
+ACTOR_ID = "user-001"
+
+st.title("🍽️ 강남 다이닝 컨시어지")
+
+# 💡: runtimeSessionId는 33자 이상 — uuid 2개 연결(64자)
+if "session_id" not in st.session_state:
+    st.session_state.session_id = uuid.uuid4().hex + uuid.uuid4().hex
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
+
+if prompt := st.chat_input("질문을 입력하세요"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+
+    try:
+        response = invoke_agent(prompt, st.session_state.session_id, ACTOR_ID)
+        answer = response.get("result", "")
+    except Exception as e:  # Runtime 타임아웃 등
+        answer = f"⚠️ Runtime 호출 실패: {e}"
+
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.chat_message("assistant").write(answer)
+bash
+
+streamlit run app.py
+브라우저 입력: "강남 식당 추천해 주세요"
+
+확인
+브라우저 챗에서 입력에 대한 Runtime 응답 표시
+6
+KB 결과 카드
+Gateway를 통한 KB 결과를 식당 상세 카드로 표시합니다.
+
+python
+
+# app.py — 2차: Gateway KB 결과 카드 + 도구 로그 기록
+import uuid
+
+import streamlit as st
+
+from agent_client import invoke_agent
+
+ACTOR_ID = "user-001"
+
+st.title("🍽️ 강남 다이닝 컨시어지")
+
+if "session_id" not in st.session_state:
+    st.session_state.session_id = uuid.uuid4().hex + uuid.uuid4().hex
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "tool_logs" not in st.session_state:
+    st.session_state.tool_logs = []
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
+
+if prompt := st.chat_input("질문을 입력하세요"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+
+    try:
+        response = invoke_agent(prompt, st.session_state.session_id, ACTOR_ID)
+        answer = response.get("result", "")
+        tool_calls = response.get("tool_calls", [])
+    except Exception as e:  # Runtime 타임아웃·Gateway 실패 등
+        answer, tool_calls = f"⚠️ 호출 실패: {e}", []
+
+    for call in tool_calls:
+💡
+        st.session_state.tool_logs.append(f"{call['name']} — {call['input']}")
+
+    kb_calls = [c for c in tool_calls if "search_knowledge_base" in c["name"]]
+💡
+
+    with st.chat_message("assistant"):
+        if kb_calls:
+            with st.container(border=True):
+                head, body = st.columns([1, 3])
+                head.markdown("**📚 식당 상세**")
+                head.caption("Knowledge Base 근거")
+                body.write(answer)
+        else:
+            st.write(answer)
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+테스트 질문: "트라토리아 벨라 상세 정보 알려 주세요"
+
+확인
+브라우저에서 식당 상세 질문에 KB 식당 상세 카드 표시
+7
+사이드바·취향 검증
+사이드바를 완성하고 새 세션에서 취향 반영을 검증합니다.
+
+python
+
+# app.py — 최종: 사이드바(취향·상태·도구 로그·세션) + 새 대화 시작
+import uuid
+
+import streamlit as st
+
+from agent_client import invoke_agent, get_runtime_status
+from memory_client import get_preferences
+
+ACTOR_ID = "user-001"
+
+def new_session_id() -> str:
+    return uuid.uuid4().hex + uuid.uuid4().hex
+💡
+
+if "session_id" not in st.session_state:
+    st.session_state.session_id = new_session_id()
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "tool_logs" not in st.session_state:
+    st.session_state.tool_logs = []
+
+st.title("🍽️ 강남 다이닝 컨시어지")
+
+with st.sidebar:
+    st.subheader("👤 고객 취향")
+    try:
+        prefs = get_preferences(ACTOR_ID)
+        for p in prefs:
+            st.write(f"- {p}")
+        if not prefs:
+            st.caption("저장된 취향 없음")
+    except Exception as e:
+        st.error(f"취향 조회 실패: {e}")
+
+    st.subheader("🖥️ 시스템")
+    st.write(f"Runtime: {get_runtime_status()}")
+    st.caption(f"세션: {st.session_state.session_id[:12]}… · 사용자: {ACTOR_ID}")
+
+    st.subheader("🔧 도구 호출 로그")
+    for log in st.session_state.tool_logs:
+        st.caption(log)
+
+    if st.button("새 대화 시작"):
+💡
+        st.session_state.session_id = new_session_id()
+        st.session_state.messages = []
+        st.rerun()
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
+
+if prompt := st.chat_input("질문을 입력하세요"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+
+    try:
+        response = invoke_agent(prompt, st.session_state.session_id, ACTOR_ID)
+        answer = response.get("result", "")
+        tool_calls = response.get("tool_calls", [])
+    except Exception as e:  # Runtime 타임아웃·Gateway 실패 등
+        answer, tool_calls = f"⚠️ 호출 실패: {e}", []
+
+    for call in tool_calls:
+        st.session_state.tool_logs.append(f"{call['name']} — {call['input']}")
+
+    kb_calls = [c for c in tool_calls if "search_knowledge_base" in c["name"]]
+
+    with st.chat_message("assistant"):
+        if kb_calls:
+            with st.container(border=True):
+                head, body = st.columns([1, 3])
+                head.markdown("**📚 식당 상세**")
+                head.caption("Knowledge Base 근거")
+                body.write(answer)
+        else:
+            st.write(answer)
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+검증 시나리오:
+
+"저는 이탈리안과 와인을 좋아해요" 입력 — 장기 기억 추출은 비동기라 1~2분 대기
+사이드바 새 대화 시작 클릭 — 화면 대화가 비워짐
+"식당 추천"만 입력 — 이탈리안·와인 위주 추천이 나오면 성공
+확인
+사이드바에 취향 요약과 도구 호출 로그(KB) 표시
+새 세션에서 "식당 추천"만 입력해도 이전 취향이 반영된 추천 표시
+
+도전 과제 방향
+Web Search 근거 반영: Gateway에 Connectors > Web Search 타깃을 추가하면 실시간 정보(날씨·이벤트) 근거를 추천에 반영하고 도구 로그에 web-search 호출을 남길 수 있습니다. 단, Web Search 커넥터는 us-east-1 전용이라 이 시리즈의 Gateway(us-west-2)에는 추가할 수 없습니다 — us-east-1 리전에 Gateway를 만들면 시도할 수 있습니다. 절차는 AgentCore Web Search 실습 참고.
+스트리밍 응답: 엔트리포인트를 async 스트리밍으로 바꾸면 응답 본문에 SSE 프레이밍(data: 줄)이 섞입니다 — 줄 단위로 파싱해 도착하는 대로 표시합니다.
+Observability 연동: CloudWatch에서 Runtime 호출 트레이스를 확인해 도구 호출 구간별 소요를 살펴봅니다.
+A/B 테스트: 시스템 프롬프트 2개 버전을 두고 같은 질문 세트에 대한 응답을 비교하는 실험을 설계합니다.
+
+핵심 포인트
+프로덕션 앱은 CLI가 아니라 boto3 bedrock-agentcore의 invoke_agent_runtime으로 Runtime을 호출합니다 — 응답 블롭 하나에 result와 tool_calls를 함께 담아 앱이 파싱합니다
+취향 저장은 Runtime 쪽(session_manager)이, 취향 표시는 앱 쪽(MemoryClient.retrieve_memories)이 담당합니다 — 같은 MEMORY_ID·네임스페이스를 바라봐야 연결됩니다
+session_id는 대화 단위, actor_id는 사용자 단위 — "새 대화 시작"은 session_id만 갈아 끼우므로 장기 기억(취향)이 유지됩니다
+Runtime(에이전트) + Gateway(도구) + Memory(기억)를 각자 교체·확장할 수 있는 조립 구조가 이 시리즈의 최종 아키텍처입니다 — 앱 코드는 호출과 표시만 담당합니다
+
+관련 실습
+AgentCore CLI 배포 — Strands 에이전트를 AgentCore Runtime에 배포하고, 호출 검증과 미니 챗 UI까지 확인합니다
+AgentCore Gateway 연결 — Gateway에 Lambda Target을 등록하고 MCP로 호출합니다
+AgentCore Memory 연동 — Memory를 연동하여 에이전트가 대화를 기억하도록 합니다
+AgentCore Web Search — Gateway Web Search 커넥터로 실시간 웹 검색
+
+도전 과제
+Web Search 근거 반영: Gateway에 Web Search 커넥터(web-search)를 타깃으로 추가하고 실시간 정보(날씨/이벤트) 근거가 추천에 반영되게 해보세요. 단, Web Search 커넥터는 us-east-1 전용입니다 — 이 시리즈의 Gateway(us-west-2)에는 추가할 수 없으므로, us-east-1 리전에 Gateway를 만들면 시도할 수 있습니다.
+스트리밍 응답: Runtime 응답을 실시간으로 스트리밍 표시해보세요.
+Observability 연동: CloudWatch에서 트레이스를 확인해보세요.
+A/B 테스트: 시스템 프롬프트 2개 버전을 비교하는 실험을 설계해보세요.

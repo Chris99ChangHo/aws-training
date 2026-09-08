@@ -1,0 +1,28 @@
+version: 0.2
+
+# dining-test CodeBuild 프로젝트가 사용하는 buildspec.
+# evals/gate_eval.py의 종료 코드가 이 스테이지의 성공/실패를 결정합니다.
+# 평균 점수가 0.7 미만이면 비0 종료 코드로 끝나 CodePipeline이 Deploy를 실행하지 않습니다.
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      # CodeBuild의 작업 디렉터리는 buildspec 파일 위치가 아니라
+      # zip 아카이브 루트(CODEBUILD_SRC_DIR)다. deploy_pipeline.sh가
+      # `DiningConcierge` 폴더를 zip 최상위로 묶으므로 모든 경로에
+      # `DiningConcierge/` 접두사가 필요하다.
+      - pip install uv
+      - cd DiningConcierge/app/DiningConcierge
+      - uv venv .venv
+      - uv pip install --python .venv/bin/python3 -e .
+      - cd ../../..
+  build:
+    commands:
+      - echo "평가 게이트 실행 중..."
+      - DiningConcierge/app/DiningConcierge/.venv/bin/python3 DiningConcierge/evals/gate_eval.py
+
+# build 단계의 python3 명령이 비0 종료 코드를 반환하면 CodeBuild가
+# 이 빌드를 FAILED로 표시하고, CodePipeline은 뒤이은 Deploy 스테이지를
+# 실행하지 않습니다.

@@ -1,0 +1,52 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "중식"
+      }
+    },
+    "location": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "강남역"
+      }
+    },
+    "price_min": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 20000
+      }
+    },
+    "price_max": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 30000
+      }
+    },
+    "rating": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 4.1
+      }
+    },
+    "reservation_available": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "true"
+      }
+    },
+    "max_party_size": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 15
+      }
+    },
+    "recommended_for": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "단체, 가성비, 매운맛"
+      }
+    }
+  }
+}

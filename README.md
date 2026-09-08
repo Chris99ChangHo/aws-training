@@ -28,7 +28,7 @@ AWS가 제공하는 에이전트를 해체해서, 특정 클라우드 벤더에�
 | Security Engineering on AWS | [`security-engineering/`](./security-engineering) | (실습은 `agents/security/`로 분리) |
 | Developing Generative AI Applications on AWS | [`developing-genai-apps/`](./developing-genai-apps) | Strands Agents, MCP, Streamlit 챗봇 |
 | DevOps Engineering on AWS | [`devops-engineering/`](./devops-engineering) | CI/CD, IaC, CodeBuild·CodeDeploy, SAM (이론 정리만, 실습 진행 예정) |
-| (과정 외) 기능 단위 랩 | [`labs/`](./labs) | InvokeModel, Strands 기초, MCP 트랜스포트, AgentCore Runtime |
+| (과정 외) 기능 단위 랩 + 미션 시리즈 | [`labs/`](./labs) | InvokeModel, AgentCore Runtime 배포, 워크숍 미션 8개(`labs/mission/`) |
 
 ## 구조
 
@@ -50,7 +50,10 @@ aws-training/
 ├── security-engineering/
 ├── developing-genai-apps/
 ├── devops-engineering/
-└── labs/
+└── labs/                               <- 기능 단위 랩 + 미션 시리즈
+    ├── invoke-model/                   기능 단위 랩
+    ├── agentcore-setup/
+    └── mission/                        워크숍 미션 8개 (01~08, 번호 = 의존 순서)
 ```
 
 `.kiro/`, `.claude/`, `.codex/`의 에이전트 설정은 **생성물**입니다. 직접

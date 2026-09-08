@@ -1,0 +1,18 @@
+version: 0.2
+
+# dining-web-api CodeBuild 프로젝트 — 풀스택 파이프라인의 Deploy 스테이지
+# 액션 2(RunOrder 2). SAM으로 API(Lambda+HTTP API)를 배포합니다.
+# --no-confirm-changeset·--no-fail-on-empty-changeset은 파이프라인 전용 옵션입니다.
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.13
+  build:
+    commands:
+      - sam build
+      - >
+        sam deploy --stack-name dining-web --region us-west-2
+        --parameter-overrides AgentRuntimeArn=${AGENT_RUNTIME_ARN}
+        --capabilities CAPABILITY_IAM --resolve-s3
+        --no-confirm-changeset --no-fail-on-empty-changeset

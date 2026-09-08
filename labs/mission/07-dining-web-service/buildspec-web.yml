@@ -1,0 +1,21 @@
+version: 0.2
+
+# dining-web-frontend CodeBuild 프로젝트 — 풀스택 파이프라인의 Deploy 스테이지
+# 액션 3(RunOrder 3). 프론트엔드를 빌드해 S3에 업로드하고 CloudFront를 무효화합니다.
+#
+# 환경 변수(CodeBuild 프로젝트에 설정 필요):
+#   WEB_BUCKET            — dining-web-<ACCOUNT_ID>
+#   CLOUDFRONT_DIST_ID     — CloudFront 배포 ID
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  build:
+    commands:
+      - cd frontend
+      - npm ci
+      - npm run build
+      - cd ..
+      - aws s3 sync frontend/dist/ "s3://${WEB_BUCKET}/" --delete
+      - aws cloudfront create-invalidation --distribution-id "${CLOUDFRONT_DIST_ID}" --paths "/*"

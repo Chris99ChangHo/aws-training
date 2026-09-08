@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  dining-web — AgentCore Runtime의 다이닝 에이전트를 서버리스 웹 API로 노출.
+  GET /는 임시 확인용 채팅 페이지, POST /ask는 DiningConcierge 에이전트를 호출합니다.
+
+Parameters:
+  AgentRuntimeArn:
+    Type: String
+    Description: 배포된 DiningConcierge의 AgentCore Runtime ARN
+
+Globals:
+  Function:
+    Timeout: 60 # 기본 3초로는 에이전트 호출이 끝나지 않으므로 필수로 늘림
+    Runtime: python3.13
+
+Resources:
+  DiningHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: Prod
+      CorsConfiguration:
+        AllowOrigins:
+          - "http://localhost:5173" # 로컬 dev 서버(2번 미션: Cloudscape 채팅 프론트엔드)
+          - "https://d2mmpmo4pek4z5.cloudfront.net" # 3번 미션: CloudFront 정적 호스팅 출처
+        AllowMethods:
+          - GET
+          - POST
+        AllowHeaders:
+          - Content-Type
+
+  DiningFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock-agentcore:InvokeAgentRuntime
+              Resource:
+                - !Ref AgentRuntimeArn
+                - !Sub "${AgentRuntimeArn}/*"
+      Environment:
+        Variables:
+          AGENT_RUNTIME_ARN: !Ref AgentRuntimeArn
+      Events:
+        RootGet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DiningHttpApi
+            Path: /
+            Method: GET
+        AskPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DiningHttpApi
+            Path: /ask
+            Method: POST
+
+Outputs:
+  ApiUrl:
+    Description: dining-web API의 기본 URL
+    Value: !Sub "https://${DiningHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"

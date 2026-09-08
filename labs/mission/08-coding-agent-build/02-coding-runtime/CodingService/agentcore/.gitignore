@@ -1,0 +1,16 @@
+# Secrets (local environment files are never committed)
+.env.local
+
+# CDK Build Artifacts
+cdk/cdk.out/
+cdk/node_modules/
+
+# CLI Internals
+.cli/*
+
+# Ephemeral Staging
+.cache/*
+
+# NOTE: 이 파일은 계정 ID·역할 ARN을 담고 있어 리포 규칙(민감정보 미커밋)에
+# 따라 강제 포함하지 않는다. 원래 템플릿은 `!.cli/deployed-state.json`으로
+# 예외 처리했으나 그 규칙을 의도적으로 뺐다.

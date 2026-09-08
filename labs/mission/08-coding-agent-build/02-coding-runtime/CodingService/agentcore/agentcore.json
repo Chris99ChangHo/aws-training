@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "CodingService",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "CodingService"
+  },
+  "runtimes": [
+    {
+      "name": "CodingService",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/CodingService/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "VPC",
+      "networkConfig": {
+        "subnets": ["subnet-0123d8188684746bd", "subnet-0117fdab3875ec9bf"],
+        "securityGroups": ["sg-0bcb0ed7cdf3161b4"]
+      },
+      "filesystemConfigurations": [
+        {
+          "s3FilesAccessPoint": {
+            "accessPointArn": "arn:aws:s3files:us-west-2:000000000000:file-system/fs-04f24f6e9b5cb848a/access-point/fsap-035e22bdd2347a893",
+            "mountPath": "/mnt/persistent"
+          }
+        }
+      ],
+      "protocol": "HTTP"
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "payments": []
+}

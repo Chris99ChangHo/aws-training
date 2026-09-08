@@ -1,0 +1,117 @@
+시리즈 3: 멀티에이전트 협업
+시리즈 개요
+다이닝 컨시어지 "강남 다이닝"을 전문가 팀으로 분리하고, 고급 오케스트레이션 패턴으로 협업시킵니다. 전문 에이전트에게 작업을 위임하는 오케스트레이터에서 시작해, 조건 분기 파이프라인(Graph) 또는 자율 협업(Swarm)을 선택 구현하고, 위임 과정을 시각화하는 Streamlit 다이닝 플래너로 완성합니다.
+
+아키텍처
+아키텍처
+사용자
+Streamlit
+오케스트레이터
+검색 전문가
+메뉴 전문가
+예약 전문가
+시작 조건
+AWS 계정 (Bedrock 모델 접근 권한)
+Python 3.12+
+다른 시리즈 선행 없이 시작할 수 있습니다 — 지식 전제는 「Strands 에이전트」 수준의 도구 정의·에이전트 구성 경험입니다
+리전: us-west-2
+
+단계별 프롬프트
+미션의 단계 프롬프트로 막혔을 때, 정확한 이름·구성까지 지정한 프롬프트입니다.
+
+Prompt
+
+tools.py를 작성해 주세요 — 전문 에이전트들이 쓸 도구입니다.
+1. 강남 일대 식당 5곳(트라토리아 벨라·스시 오마카세 하루·한우명가·르 비스트로·매콤한 마라)을 딕셔너리 리스트로 정의해 주세요 (name/cuisine/location/price_range/rating/menu).
+2. @tool로 search_restaurants(location, cuisine, max_budget), get_menu(restaurant_name), estimate_cost(restaurant_name, party_size), check_reservations(restaurant_name, date, time, party_size), create_reservation(restaurant_name, date, time, party_size, name) 도구를 만들어 주세요 — 타입 힌트와 docstring 필수입니다.
+완료 기준: 각 도구를 직접 호출하면 조건에 맞는 항목이 JSON으로 반환됩니다.
+Prompt
+
+agents.py를 작성해 주세요 — 전문가 에이전트 3개입니다.
+1. BedrockModel(us.anthropic.claude-sonnet-4-6)을 공용으로 정의해 주세요.
+2. 검색 전문가(search_restaurants), 메뉴 전문가(get_menu·estimate_cost), 예약 전문가(check_reservations·create_reservation)를 각각 Agent로 만들어 주세요 — 각자 고유한 system_prompt(전문 분야·응답 스타일)를 갖습니다.
+완료 기준: 각 에이전트를 독립 실행해 전문 분야 질문에 답하면 성공입니다.
+Prompt
+
+orchestrator.py를 작성해 주세요 — agents-as-tools 오케스트레이터입니다.
+1. agents.py의 전문가 3개를 @tool로 감싸 위임 이유를 로그로 출력하게 해 주세요.
+2. 오케스트레이터 Agent의 tools에 전문가 도구 3개를 등록해 주세요.
+3. "강남역 근처 가성비 좋은 중식당 추천해 주세요" / "8명 팀 회식 코스를 짜 주세요. 예산은 총 40만원입니다." 두 질문으로 테스트해 주세요.
+완료 기준: 질문 유형별로 올바른 전문가에게 위임되고(로그 확인) 통합 응답이 반환되면 성공입니다.
+Prompt
+
+app.py를 작성해 주세요 — 오케스트레이터의 Streamlit 미니 챗입니다.
+1. orchestrator.py의 오케스트레이터를 임포트해 재사용해 주세요 — 새 오케스트레이터를 만들지 않습니다.
+2. ask_* 래퍼가 위임할 때마다 전역 리스트 delegation_log에 전문가 이름을 추가하도록 보완해 주세요 — print 로그는 그대로 둡니다.
+3. st.chat_input으로 질문을 받아 응답을 st.chat_message로 표시하고, 응답 아래에 delegation_log의 전문가 이름을 위임 라벨로 표시해 주세요.
+4. streamlit run app.py로 띄우고 브라우저에서 "강남역 근처 가성비 좋은 중식당 추천해 주세요"(검색), "한우명가 메뉴 추천해 주세요"(메뉴), "트라토리아 벨라 내일 저녁 4명 예약 가능한가요?"(예약)를 보내 라벨이 각각 다르게 표시되는지 확인해 주세요.
+완료 기준: 질문 유형별로 위임된 전문가 라벨이 응답과 함께 표시되면 성공입니다.
+
+단계별 프롬프트
+미션의 단계 프롬프트로 막혔을 때, 정확한 이름·구성까지 지정한 프롬프트입니다. 선택한 옵션의 프롬프트만 사용하세요.
+
+Prompt
+
+graph_pipeline.py를 작성해 주세요 — Option A: Graph 조건 분기 파이프라인입니다.
+1. ../mission-multiagent-delegation/tools.py를 복사하고, 검색→리뷰→코스 구성→검증 에이전트 4개를 정의해 주세요.
+2. GraphBuilder(from strands.multiagent.graph)로 노드를 추가하고 순차 엣지를 연결해 주세요.
+3. 검증 노드에서 예산 초과 판정 시 검색 노드로 되돌아가는 조건 엣지를 1개 이상 넣어 주세요 — 진행/재검색 양방향 엣지에 서로 반대인 condition을 지정해 배타 분기로 만들어 주세요.
+4. set_max_node_executions와 set_execution_timeout으로 무한 루프 상한을 걸어 주세요.
+5. "8명 팀 회식, 1인 예산 3만원" 요청으로 실행하고 각 노드의 결과를 단계별 로그로 출력해 주세요.
+완료 기준: 예산 초과 시 재검색 분기가 로그로 확인되면 성공입니다.
+Prompt
+
+swarm_collab.py를 작성해 주세요 — Option B: Swarm 자율 협업입니다.
+1. ../mission-multiagent-delegation/tools.py를 복사하고, 검색/메뉴/예약 에이전트 3개를 각자 name·system_prompt·도구로 정의해 주세요 — Swarm은 핸드오프 대상을 name으로 식별하므로 name 지정이 필수입니다.
+2. Swarm(from strands.multiagent.swarm)에 3개를 등록하고 "8명 팀 회식 코스 계획"을 투입해 주세요.
+3. 에이전트 간 handoff/정보 교환을 단계별 로그로 출력해 주세요.
+완료 기준: 에이전트 간 정보 교환이 로그로 확인되고 통합 코스가 반환되면 성공입니다.
+Prompt
+
+app.py를 작성해 주세요 — 선택한 워크플로를 호출하는 Streamlit 미니 실행 뷰입니다.
+1. 요청 입력창에 받은 요청으로 graph_pipeline.py(A) 또는 swarm_collab.py(B)의 워크플로를 실행해 주세요.
+2. 실행된 노드/에이전트의 이름과 순서를 단계 로그로, 최종 코스를 결과 영역에 표시해 주세요.
+3. streamlit run app.py로 띄우고 브라우저에서 "8명 팀 회식 코스 계획"을 입력해 확인해 주세요.
+완료 기준: 브라우저에서 실행 단계 순서와 최종 코스가 표시되면 성공입니다.
+
+단계별 프롬프트
+미션의 단계 프롬프트로 막혔을 때, 정확한 이름·구성까지 지정한 프롬프트입니다.
+
+Prompt
+
+planner_engine.py를 작성해 주세요 — Streamlit 콜백 연동 오케스트레이터입니다.
+1. ../mission-multiagent-delegation/tools.py를 복사하고 전문가 에이전트 3개 + 오케스트레이터를 DiningPlannerEngine 클래스로 구성해 주세요.
+2. 위임이 일어날 때마다 호출되는 on_delegation(agent_name, query) 콜백을 받아 외부(Streamlit)에서 로그를 수집할 수 있게 해 주세요.
+완료 기준: 콜백으로 위임 이벤트(누가→누구에게→무엇을)가 전달되면 성공입니다.
+Prompt
+
+app.py를 작성해 주세요 — 멀티에이전트 다이닝 플래너 Streamlit 앱입니다.
+1. st.chat_input으로 회식·기념일 코스 요청을 받아 planner_engine의 오케스트레이터를 호출해 주세요.
+2. 사이드바에 위임 로그(오케스트레이터 → 검색 전문가: ...)를 실시간 표시해 주세요.
+3. 메인에 최종 코스를 순서|식당·메뉴|비용 테이블로, 총 비용(인원×메뉴 예산 합산)을 st.metric으로 보여 주세요.
+완료 기준: streamlit run app.py에서 위임 로그·코스 테이블·총 비용이 모두 표시되면 성공입니다.
+Prompt
+
+streamlit run app.py --server.port 8501로 앱을 실행하고, "다음 주 금요일 저녁 8명 팀 회식 코스를 만들어 주세요. 예산은 총 40만원입니다."를 입력해 주세요. 사이드바에 검색 전문가 → 메뉴 전문가 → 예약 전문가 순의 위임 흐름이 표시되고, 메인에 코스표와 총 비용이 나오는지 확인해 주세요.
+완료 기준: 위임 로그·코스표 테이블·총 비용 요약이 모두 표시되면 성공입니다.
+
+도전 과제 방향
+코스 수정 인터랙션: 오케스트레이터 Agent는 자체 대화 이력을 유지하므로 "메인 식당을 조용한 곳으로 바꿔 주세요" 같은 후속 입력을 같은 orchestrator 인스턴스로 처리하고, 수정된 응답에서 코스 행을 다시 추출합니다.
+실시간 스트리밍: 동기 호출 대신 orchestrator.stream_async(prompt)의 비동기 이벤트에서 텍스트 델타를 골라 st.write_stream으로 연결합니다.
+PDF 내보내기: extract_course_rows가 만든 행 데이터를 누적해 두고 PDF 생성 라이브러리로 변환한 뒤 st.download_button으로 제공합니다.
+
+핵심 포인트
+agents-as-tools 오케스트레이터의 ask_* 래퍼가 위임 기록의 단일 지점입니다 — 래퍼에서 {"from": …, "to": …, "task": …} dict를 직접 기록하면 UI가 위임 흐름을 그대로 재생합니다
+엔진(planner_engine.py)과 UI(app.py)를 분리합니다 — Streamlit은 orchestrator와 delegation_logs를 import만 하고 에이전트 구성을 모릅니다
+모듈 전역 orchestrator는 프로세스 안에서 1회만 생성됩니다 — rerun은 스크립트를 재실행하지만 import된 모듈은 캐시됩니다
+응답 형식은 system prompt로 통제합니다 — 순서 | 식당·메뉴 | 비용 3칸 마크다운 표와 총 비용(인원×메뉴 예산 합산) 한 줄
+
+관련 실습
+Strands Agents-as-Tools — 전문가 에이전트를 도구로 호출 + 컨텍스트 전달
+Strands Graph — DAG 워크플로우 + Artifact 전달
+Strands Swarm — 자율 핸드오프 + 상태 유지
+
+도전 과제
+코스 수정 인터랙션: "메인 식당을 조용한 곳으로 바꿔 주세요"를 처리해보세요.
+실시간 스트리밍: 각 에이전트 응답을 스트리밍으로 표시해보세요.
+PDF 내보내기: 완성된 코스표를 PDF로 다운로드해보세요.

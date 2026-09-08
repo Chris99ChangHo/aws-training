@@ -29,6 +29,13 @@ generated_image.png
 **/agentcore/aws-targets.json
 **/agentcore/.cli/deployed-state.json
 
+# AgentCore CLI 빌드 캐시·트레이스 (의존성 패키징 산출물, 수백 MB)
+**/agentcore/.cache/
+**/agentcore/.cli/traces/
+
+# SAM 빌드 산출물
+**/.aws-sam/
+
 # 대화 세션 저장 산출물 (대화 히스토리, 개인 취향 등 포함)
 **/sessions/
 

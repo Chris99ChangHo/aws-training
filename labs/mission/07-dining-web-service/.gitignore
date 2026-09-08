@@ -1,0 +1,7 @@
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+.aws-sam/
+DiningConcierge/agentcore/.env.local
+DiningConcierge/agentcore/.cli/
+DiningConcierge/agentcore/aws-targets.json

@@ -1,0 +1,1806 @@
+시리즈 8: 코딩 에이전트 구축
+시리즈 개요
+지금까지의 에이전트는 식당을 찾아 주고 예약을 잡아 주는 쪽이었습니다. 이 시리즈에서 만드는 에이전트는 코드를 씁니다 — 강남 다이닝 서비스의 예약 로직을 사람 대신 구현하는 코딩 에이전트입니다. 기성 코딩 에이전트를 부리는 법이 「코딩 에이전트 운용」이라면, 이 시리즈는 그 에이전트를 직접 만드는 쪽입니다.
+
+전반부는 로컬에서 에이전트를 만들고 자기 교정 패턴을 완성합니다. Shell 실행과 파일 읽기·쓰기 도구를 직접 정의해 코딩 에이전트를 처음부터 만들고, Reviewer·Tester를 붙여 사람 없이 지적과 실행 결과로 코드를 교정하는 루프를 돌립니다. 후반부는 이 에이전트를 클라우드 서비스로 올립니다 — AgentCore Runtime에 배포해 Git 기반 팀 코딩 서비스로 만들고, Lambda MicroVMs로 코드 실행을 격리된 샌드박스에서 돌립니다.
+
+아키텍처
+아키텍처
+자연어 요청
+git push
+코드 실행
+영속 저장
+개발자
+AgentCore Runtime
+코디네이터
+Coder
+Reviewer
+Tester
+Git 저장소
+Lambda MicroVM
+
+시작 조건
+AWS 계정 (Amazon Bedrock 모델 접근 권한 — us.anthropic.claude-sonnet-4-6 활성화)
+Python 3.12+ 와 Strands Agents SDK — 「Strands 에이전트」에서 구성한 환경 재사용
+@tool 데코레이터로 도구를 정의하고 에이전트에 연결하는 방식에 익숙할 것 — 「Strands 에이전트」 시리즈 수준의 도구 정의 경험
+미션 12는 로컬 환경, 미션 34는 AWS 서비스를 사용합니다 — 순서대로 진행하세요
+에이전트가 파일을 쓰고 명령을 실행하므로, 작업 디렉터리를 격리하고 그 밖을 건드리지 못하게 막는 것이 전제입니다
+AgentCore CLI 설치 + CDK Bootstrap 완료 (미션 3)
+Docker 설치 (미션 4 — Lambda MicroVMs 이미지 빌드에 Dockerfile 사용)
+리전: us-west-2
+
+코딩 에이전트 만들기
+중급
+Shell 실행과 파일 읽기·쓰기 도구를 직접 정의해, 예약 로직을 작성하고 실행까지 하는 코딩 에이전트를 만듭니다.
+
+미션 브리핑
+강남 다이닝 서비스에 예약 인원 검증 로직을 넣어야 합니다. 지금까지는 사람이 코드를 썼지만, 이번에는 코드를 쓰는 에이전트를 직접 만듭니다. 파일을 읽고 쓰고 명령을 실행할 수 있어야 코딩 에이전트인데, 그 능력이 곧 위험이기도 합니다 — 작업 디렉터리 밖을 건드리거나 위험한 명령을 실행하면 안 됩니다. 도구를 직접 정의하면서 그 경계를 어디에 그을지도 함께 결정하세요. 완성되면 "예약 인원이 식당 최대 수용 인원을 넘는지 검증하는 함수를 만들어 주세요"라는 요청 하나로 파일이 생기고 실행까지 되어야 합니다.
+
+Shell 실행·파일 읽기·파일 쓰기 도구를 @tool로 직접 정의하고, 작업 디렉터리 workspace/ 밖 접근을 차단하세요
+세 도구를 가진 코딩 에이전트를 만들어 자연어 요청으로 예약 인원 검증 함수를 작성하게 하세요
+에이전트가 스스로 작성한 코드를 실행해 결과를 확인하고, 실패하면 고쳐서 통과시키게 하세요
+마지막으로 에이전트를 미니 Streamlit 코딩 콘솔로 감싸, 코딩 요청의 결과가 workspace/ 파일로 나타나는 것을 브라우저에서 확인하세요
+
+목표
+도구 3종 정의 — run_shell·read_file·write_file을 @tool로 구현하고, workspace/ 밖 경로와 위험 명령을 거부
+코딩 에이전트가 자연어 요청으로 workspace/reservation.py에 예약 인원 검증 함수를 작성
+에이전트가 작성한 코드를 스스로 실행해 결과를 확인 — 실패 시 수정 후 통과까지 도달
+UI 확인 — 미니 Streamlit 코딩 콘솔(app.py)에서 코딩 요청을 입력해, 에이전트 응답과 workspace/에 생성·수정된 파일 목록·내용이 브라우저에 표시
+제약 조건
+프로젝트 디렉터리는 labs/dining-coder/, 에이전트 작업 공간은 labs/dining-coder/workspace/
+도구는 Strands @tool 데코레이터로 직접 정의 — 빌트인 파일·Shell 도구 패키지를 그대로 쓰지 않습니다 (마지막 콘솔 단계의 app.py는 에이전트를 호출하는 표시 계층이라 이 제약과 무관합니다)
+모델: us.anthropic.claude-sonnet-4-6
+검증 대상 수용 인원은 시나리오 정본을 사용 — 한우명가 30명, 트라토리아 벨라 20명, 스시 오마카세 하루 8명
+도구는 workspace/ 밖 경로를 거부하고, 결과 문자열로 거부 이유를 돌려주세요 — 예외로 죽이면 에이전트가 이유를 모릅니다
+리전: us-west-2.
+UI: 미니 Streamlit 코딩 콘솔(코딩 요청 → 에이전트 응답 + workspace/ 생성·수정 파일 목록·내용 표시).
+
+힌트
+핵심 패턴
+
+경로 경계는 절대 경로 해석으로 검사합니다:
+python
+
+WORKSPACE = (Path(__file__).parent / "workspace").resolve()
+
+def _safe_path(path: str) -> Path | None:
+    target = (WORKSPACE / path).resolve()
+    return target if target.is_relative_to(WORKSPACE) else None
+셸 도구는 cwd 고정 + timeout + 파괴적 명령 사전 거부:
+python
+
+result = subprocess.run(
+    command, shell=True, cwd=WORKSPACE,
+    capture_output=True, text=True, timeout=60
+)
+거부는 예외가 아니라 반환값 — 에이전트가 이유를 읽고 재시도할 수 있도록
+stderr
+도 반드시 반환 — 에이전트의 자기 교정 근거
+시스템 프롬프트에 "쓴 뒤 실행하라" 명시 — 없으면 검증 없이 완료 선언
+트러블슈팅
+
+is_relative_to
+미사용 시 —
+"../"
+차단만으로는 절대 경로·심링크 우회 불가
+timeout
+미설정 시 — 대화형 명령이나 서버 실행 시도에 세션 멈춤
+stderr
+미반환 시 — 에이전트가 실패 원인을 모르고 같은 코드를 반복 생성
+
+1
+환경 확인
+bash
+
+python3 --version
+pip install "strands-agents>=1.43" boto3
+aws --version
+aws sts get-caller-identity --region us-west-2
+확인
+터미널 — python3 --version 출력이 3.12 이상
+터미널 — aws sts get-caller-identity --region us-west-2 출력에 Account·Arn 표시
+2
+도구 3종 정의와 경계
+python
+
+# labs/dining-coder/tools.py
+import subprocess
+from pathlib import Path
+from strands import tool
+
+WORKSPACE = (Path(__file__).parent / "workspace").resolve()
+WORKSPACE.mkdir(exist_ok=True)
+
+DANGEROUS_COMMANDS = ["rm -rf /", "sudo", ":(){", "mkfs", "dd if="]
+
+def _safe_path(path: str) -> Path | None:
+    """workspace 안이면 해석된 경로, 밖이면 None."""
+    target = (WORKSPACE / path).resolve()
+    return target if target.is_relative_to(WORKSPACE) else None
+
+@tool
+def run_shell(command: str) -> str:
+    """workspace를 작업 디렉터리로 셸 명령을 실행합니다."""
+    if any(bad in command for bad in DANGEROUS_COMMANDS):
+        return f"거부: 파괴적인 명령으로 판단했습니다 — {command}"
+    try:
+        result = subprocess.run(
+            command, shell=True, cwd=WORKSPACE,
+            capture_output=True, text=True, timeout=60
+        )
+    except subprocess.TimeoutExpired:
+        return f"중단: 60초 실행 상한을 넘겨 종료했습니다 — {command}"
+    return f"exit={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+
+@tool
+def read_file(path: str) -> str:
+    """workspace 안의 파일을 읽습니다."""
+    target = _safe_path(path)
+    if target is None:
+        return f"거부: {path}는 workspace 밖입니다. workspace 안 상대 경로만 허용됩니다."
+    if not target.exists():
+        return f"실패: {path} 파일이 존재하지 않습니다."
+    return target.read_text(encoding="utf-8")
+
+@tool
+def write_file(path: str, content: str) -> str:
+    """workspace 안의 파일에 내용을 씁니다."""
+    target = _safe_path(path)
+    if target is None:
+        return f"거부: {path}는 workspace 밖입니다. workspace 안 상대 경로만 허용됩니다."
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return f"작성 완료: {target.relative_to(WORKSPACE)} ({len(content)} bytes)"
+
+if __name__ == "__main__":
+    # 경계 테스트
+    print(write_file("../escape.txt", "x"))       # 거부
+    print(write_file("test.txt", "hello world"))  # 성공
+    print(read_file("test.txt"))                  # 성공
+    print(run_shell("rm -rf /"))                  # 거부
+    print(run_shell("echo OK"))                   # 성공
+확인
+터미널 — write_file("../escape.txt", "x") 호출이 거부 이유 문자열을 반환하고 파일 미생성
+터미널 — write_file("test.txt", "hello") 호출이 성공하고 workspace/test.txt 생성
+터미널 — run_shell("rm -rf /") 호출이 파괴적 명령 거부 문자열 반환
+3
+코딩 에이전트 구성과 코드 작성
+python
+
+# labs/dining-coder/coder.py
+from strands import Agent
+from strands.models import BedrockModel
+from tools import run_shell, read_file, write_file
+
+SYSTEM_PROMPT = """당신은 코드를 작성하는 에이전트입니다.
+
+규칙:
+1. workspace/ 안에서만 파일을 읽고·쓰고·실행합니다.
+2. 파일을 작성한 뒤에는 반드시 run_shell로 실행해 결과를 확인합니다.
+3. 실행이 실패하면 stderr에서 원인을 찾아 코드를 수정하고 다시 실행합니다.
+4. 실행 성공이 확인될 때까지 완료를 선언하지 않습니다.
+"""
+
+model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-6", region_name="us-west-2")
+agent = Agent(
+    model=model,
+    system_prompt=SYSTEM_PROMPT,
+    tools=[run_shell, read_file, write_file],
+)
+
+if __name__ == "__main__":
+    result = agent(
+        "예약 인원이 식당 최대 수용 인원을 넘는지 검증하는 함수를 "
+        "workspace/reservation.py에 만들어 주세요. "
+        "한우명가 30명, 트라토리아 벨라 20명, 스시 오마카세 하루 8명 기준입니다"
+    )
+    print(str(result))
+확인
+파일 시스템 — labs/dining-coder/workspace/reservation.py 존재
+파일 내용 — 한우명가 30, 트라토리아 벨라 20, 스시 오마카세 하루 8 기준 검증 로직 포함
+4
+스스로 실행하고 고치기
+bash
+
+cd labs/dining-coder
+python3 -c "
+from coder import agent
+result = agent(
+    '작성한 함수를 실제로 실행해서 '
+    '한우명가 35명 요청이 거절되고 25명 요청이 통과하는지 확인해 주세요'
+)
+print(str(result))
+"
+확인
+대화 출력 — 에이전트가 run_shell로 코드를 실행한 stdout/stderr 출력 표시
+대화 출력 — 한우명가 35명 거절·25명 통과 결과 확인
+대화 출력 — 실패 시 수정 후 재실행 과정이 대화에 남음
+5
+미니 코딩 콘솔 — 에이전트의 작업을 브라우저에서 확인
+python
+
+# labs/dining-coder/app.py
+import streamlit as st
+from pathlib import Path
+from coder import agent
+
+WORKSPACE = Path(__file__).parent / "workspace"
+
+st.set_page_config(page_title="코딩 에이전트 콘솔", page_icon="🤖")
+st.title("🤖 코딩 에이전트 콘솔")
+st.caption("코딩 요청을 입력하면 에이전트가 코드를 작성·실행합니다.")
+
+if prompt := st.chat_input("코딩 요청을 입력하세요"):
+    with st.chat_message("user"):
+        st.write(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("에이전트가 작업 중..."):
+            result = agent(prompt)
+        st.write(str(result))
+
+    # workspace 파일 목록·내용 표시
+    st.subheader("📁 workspace/ 파일")
+    files = sorted(WORKSPACE.rglob("*.py"))
+    if not files:
+        st.info("아직 생성된 파일이 없습니다.")
+    for f in files:
+        with st.expander(f"📄 {f.relative_to(WORKSPACE)}"):
+            st.code(f.read_text(encoding="utf-8"), language="python")
+bash
+
+cd labs/dining-coder
+streamlit run app.py
+확인
+브라우저 — 코딩 요청 입력 후 에이전트 응답 표시
+브라우저 — workspace/ 파일 목록과 각 파일 내용 표시
+브라우저 — 트라토리아 벨라 22명 거절(수용 인원 20명) 결과 확인
+
+도전 과제 방향
+읽기 전용 모드 — READONLY=1 환경변수 설정 시 write_file과 run_shell이 거부 문자열을 반환하도록 분기
+명령 화이트리스트 — ALLOWED_COMMANDS = ["python", "pytest", "ls"]로 제한하고 나머지 전부 거부
+작업 로그 — Hook(AfterToolCallEvent)으로 도구명·인자·반환값을 workspace/.log 파일에 append
+핵심 포인트
+거부는 예외가 아니라 반환값 — 도구가 예외로 죽으면 에이전트는 이유를 모른 채 같은 시도를 반복합니다. 거부 이유를 문자열로 돌려주면 에이전트가 스스로 경로를 고쳐 재시도합니다.
+경계는 해석된 절대 경로로 판정 — ".." 문자열 필터는 절대 경로와 심링크 우회를 놓칩니다. resolve() 후 is_relative_to()가 세 우회를 한 번에 막습니다.
+`stderr`를 버리지 말 것 — 실행 실패의 원인은 대부분 stderr에 있고, 이 값이 곧 에이전트의 수정 근거입니다.
+"쓴 뒤 실행하라"는 프롬프트에 명시 — 없으면 에이전트는 파일만 쓰고 검증 없이 완료를 선언합니다.
+`timeout`은 선택이 아닙니다 — 대화형 명령이나 서버 실행 시도는 상한이 없으면 세션을 멈춥니다.
+
+리뷰·테스트 자기 교정 루프
+고급
+Coder에 Reviewer와 Tester를 붙여, 지적과 실행 결과로 서로를 검증하며 코드를 완성하는 3에이전트 루프를 만듭니다.
+
+미션 브리핑
+선행 미션의 에이전트는 코드를 쓰고 실행까지 하지만, 자기 코드를 냉정하게 보지 못합니다. 경계값을 빼먹고도 "완료했습니다"라고 답하고, 실행이 통과하면 품질은 묻지 않습니다. 이번 미션에서는 검증을 다른 에이전트에게 맡깁니다 — Reviewer는 코드를 읽고 지적하고, Tester는 테스트를 써서 실행으로 증명합니다. 코디네이터는 두 판정을 모아 Coder에게 재작업을 지시하고, 둘 다 통과할 때까지 최대 3회 반복합니다. 사람이 개입하지 않는 자기 교정 루프를 만드는 것이 목표입니다.
+
+Coder·Reviewer·Tester 세 에이전트를 @tool 함수로 감싸고, 파이썬 코디네이터가 이를 호출해 조율하게 하세요
+Reviewer는 APPROVED 또는 NEEDS_CHANGES + 지적 사항으로, Tester는 마지막 줄 passed=N failed=M 형식의 테스트 실행 결과로 판정하세요
+둘 중 하나라도 통과하지 못하면 Coder가 재작업 — 최대 3회로 제한하고, 초과 시 최선의 코드와 남은 지적을 함께 반환하세요
+마지막으로 루프를 미니 코딩 콘솔에서 실행해, 라운드별 리뷰 판정과 최종 통과 코드를 브라우저에서 확인하세요
+
+목표
+3에이전트 구성 — Coder·Reviewer·Tester가 각자 시스템 프롬프트를 갖고 @tool 함수로 감싸여 파이썬 코디네이터가 호출
+Reviewer가 APPROVED/NEEDS_CHANGES + 지적 사항을 반환하고, Tester가 테스트 파일을 작성·실행해 마지막 줄 passed=N failed=M과 실패 로그를 반환
+두 판정이 모두 통과할 때까지 재작업 루프가 돌고, 3회 초과 시 무한 루프 없이 최선 결과 + 남은 지적으로 종료 — 루프 진행 과정이 로그로 추적됨
+UI 확인 — 미니 코딩 콘솔에서 요청을 입력해, 라운드별 리뷰 판정(반려 사유/통과)이 순서대로 브라우저에 표시되고 최종 통과 코드가 workspace/ 파일로 확인됨
+제약 조건
+앞 미션의 labs/dining-coder/ 프로젝트를 확장 — 도구 3종과 workspace/ 경계를 그대로 재사용합니다
+세 에이전트 모두 us.anthropic.claude-sonnet-4-6, Strands @tool로 감싼 Agents as Tools 패턴
+Coder만 파일을 쓰고, Reviewer는 읽기만, Tester는 테스트 파일 작성과 실행만 — 역할별로 주는 도구를 다르게 하세요
+최대 반복 3회 — 코디네이터가 횟수를 세고, 초과 시 최선 결과와 남은 지적을 함께 반환합니다
+판정 대상 과제는 앞 미션의 예약 인원 검증 함수 — 경계값(수용 인원과 정확히 같은 인원)과 잘못된 입력(0명·음수·없는 식당)까지 다루게 만드세요
+리전: us-west-2.
+UI: 미니 Streamlit 코딩 콘솔(요청 → 라운드별 리뷰 판정 순차 표시 + 최종 통과 코드) — 「코딩 에이전트 만들기」 미션의 app.py를 재사용하고, 없으면 이 미션에서 만들어도 됩니다.
+
+힌트
+핵심 패턴
+
+@tool
+래퍼로 에이전트를 함수화 — 개별 테스트와 코디네이터 호출 모두 가능:
+python
+
+@tool
+def review_code(path: str) -> str:
+    """지정한 파일의 코드 품질을 검토하고 판정을 반환합니다."""
+    return str(reviewer(f"{path} 파일의 코드를 검토해 주세요."))
+루프 카운터는 파이썬 코드가 관리 — 모델에게 횟수를 세게 하면 재현 불가:
+python
+
+for round_no in range(1, MAX_ROUNDS + 1):  # MAX_ROUNDS = 3
+    # Coder → Reviewer → Tester → 판정 종합
+    if approved and passed:
+        return {"state": "APPROVED", "rounds": round_no, "code": code}
+return {"state": "BEST_EFFORT", "rounds": MAX_ROUNDS, ...}
+트러블슈팅
+
+Reviewer가 형식을 어기면 → 시스템 프롬프트에 "반드시 첫 줄을 APPROVED 또는 NEEDS_CHANGES로" 재강조, 폴백으로 미통과 처리
+Tester 마지막 줄 파싱 실패 →
+output.strip().split('\n')[-1]
+로 마지막 줄 추출, 형식 불일치 시 미통과 처리
+모듈 레벨 에이전트의 컨텍스트 누적 → 회차마다 새 Agent 인스턴스를 만들거나, 독립 판정이 필요하면 초기화
+
+1
+환경 확인
+bash
+
+cd labs/dining-coder/
+ls tools.py coder.py workspace/
+aws sts get-caller-identity --region us-west-2
+pip show strands-agents streamlit
+확인
+labs/dining-coder/ 디렉토리 — tools.py, coder.py, workspace/ 존재
+AWS 자격 증명 — aws sts get-caller-identity --region us-west-2 성공
+패키지 — strands-agents, streamlit 설치됨
+2
+Reviewer와 Tester 추가
+reviewer.py:
+
+python
+
+from strands import Agent, tool
+from strands.models import BedrockModel
+from tools import read_file
+
+reviewer = Agent(
+    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-6", region_name="us-west-2"),
+    system_prompt=(
+        "당신은 코드 리뷰어입니다. 다음 기준으로 검토합니다:\n"
+        "1. 경계값 처리 (수용 인원과 정확히 같은 인원 등)\n"
+        "2. 잘못된 입력 처리 (0명, 음수, 없는 식당)\n"
+        "3. 함수 분리 (단일 책임)\n"
+        "4. 이름의 명확성\n\n"
+        "반드시 첫 줄을 APPROVED 또는 NEEDS_CHANGES로 시작하세요.\n"
+        "NEEDS_CHANGES면 고칠 항목을 번호로 나열하세요."
+    ),
+    tools=[read_file],
+)
+
+@tool
+def review_code(path: str) -> str:
+    """지정한 파일의 코드 품질을 검토하고 판정을 반환합니다."""
+    return str(reviewer(f"{path} 파일의 코드를 검토해 주세요."))
+tester.py:
+
+python
+
+from strands import Agent, tool
+from strands.models import BedrockModel
+from tools import write_file, run_shell
+
+tester = Agent(
+    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-6", region_name="us-west-2"),
+    system_prompt=(
+        "당신은 테스트 엔지니어입니다. 검증 대상 함수의 테스트를 작성해 "
+        "workspace/test_reservation.py에 저장하고 실행합니다.\n"
+        "경계값, 잘못된 입력, 정상 케이스를 모두 포함하세요.\n"
+        "실행 결과의 마지막 줄은 반드시 passed=N failed=M 형식으로 출력하세요.\n"
+        "실패한 테스트가 있으면 실패 로그(stderr 포함)도 함께 반환하세요."
+    ),
+    tools=[write_file, run_shell],
+)
+
+@tool
+def run_tests(path: str) -> str:
+    """대상 파일의 테스트를 작성·실행하고 결과를 반환합니다."""
+    return str(tester(f"{path} 파일의 함수를 테스트해 주세요."))
+단독 호출 확인:
+
+python
+
+# Reviewer 단독 테스트
+result = review_code("workspace/reservation.py")
+print(result)  # 첫 줄: APPROVED 또는 NEEDS_CHANGES
+
+# Tester 단독 테스트
+result = run_tests("workspace/reservation.py")
+print(result)  # 마지막 줄: passed=N failed=M
+확인
+reviewer.py — tools=[read_file]만 포함, 시스템 프롬프트에 4개 검토 기준 + 형식 규칙
+tester.py — tools=[write_file, run_shell]만 포함, 마지막 줄 passed=N failed=M 형식
+Reviewer 단독 호출 — 응답 첫 줄이 APPROVED 또는 NEEDS_CHANGES로 시작
+Tester 단독 호출 — 응답 마지막 줄이 passed=N failed=M 형식
+3
+코디네이터로 세 에이전트 조율
+orchestrator.py (1단계 — 단일 호출):
+
+python
+
+import logging
+from strands import Agent, tool
+from strands.models import BedrockModel
+from tools import read_file, write_file, run_shell
+from reviewer import reviewer
+from tester import tester
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# --- Coder 에이전트 ---
+coder = Agent(
+    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-6", region_name="us-west-2"),
+    system_prompt="당신은 파이썬 개발자입니다. workspace/ 디렉토리에 코드를 작성합니다.",
+    tools=[read_file, write_file, run_shell],
+)
+
+@tool
+def write_code(task: str) -> str:
+    """Coder에게 코드 작성을 요청합니다."""
+    return str(coder(task))
+
+@tool
+def review_code(path: str) -> str:
+    """Reviewer에게 코드 품질 판정을 요청합니다."""
+    return str(reviewer(f"{path} 파일의 코드를 검토해 주세요."))
+
+@tool
+def run_tests(path: str) -> str:
+    """Tester에게 테스트 작성·실행을 요청합니다."""
+    return str(tester(f"{path} 파일의 함수를 테스트해 주세요."))
+
+def coordinate(task: str) -> dict:
+    """코디네이터 — 1회 호출로 세 에이전트 순차 실행."""
+    logger.info("=== 코디네이터 시작: %s ===", task)
+
+    code = write_code(task)
+    logger.info("round=1 Coder 완료")
+
+    review = review_code("workspace/reservation.py")
+    approved = str(review).strip().startswith("APPROVED")
+    logger.info("round=1 approved=%s", approved)
+
+    test_result = run_tests("workspace/reservation.py")
+    test_output = str(test_result).strip()
+    last_line = test_output.split("\n")[-1]
+    passed = "failed=0" in last_line
+    logger.info("round=1 passed=%s (%s)", passed, last_line)
+
+    return {
+        "approved": approved,
+        "passed": passed,
+        "review": str(review),
+        "test": test_output,
+    }
+
+if __name__ == "__main__":
+    result = coordinate(
+        "예약 인원 검증 함수를 경계값과 잘못된 입력까지 처리하도록 만들어 주세요"
+    )
+    print(result)
+확인
+orchestrator.py — write_code, review_code, run_tests 세 @tool 함수 정의
+코디네이터가 파이썬 코드(LLM 에이전트 아님)로 Coder → Reviewer → Tester 순 호출
+로그에 round=1 approved=True/False passed=True/False 형태의 회차별 판정 기록
+4
+재작업 루프와 3회 상한
+orchestrator.py (루프 완성):
+
+python
+
+MAX_ROUNDS = 3
+
+def build_with_review(task: str) -> dict:
+    """자기 교정 루프 — 최대 3회 재작업."""
+    feedback = ""
+    code = ""
+    history = []
+
+    for round_no in range(1, MAX_ROUNDS + 1):
+        # Coder 호출 — 재작업 시 피드백 원문 전달
+        prompt = task
+        if feedback:
+            prompt = f"{task}\n\n지난 회차 지적 사항 (원문 그대로):\n{feedback}"
+        code = str(write_code(prompt))
+        logger.info("round=%s Coder 완료", round_no)
+
+        # Reviewer 판정
+        review = str(review_code("workspace/reservation.py")).strip()
+        approved = review.startswith("APPROVED")
+        logger.info("round=%s approved=%s", round_no, approved)
+
+        # Tester 판정
+        test_output = str(run_tests("workspace/reservation.py")).strip()
+        last_line = test_output.split("\n")[-1]
+        passed = "failed=0" in last_line
+        logger.info("round=%s passed=%s (%s)", round_no, passed, last_line)
+        history.append({"round": round_no, "approved": approved,
+                        "passed": passed, "review": review, "test": last_line})
+
+        # 두 판정 모두 통과
+        if approved and passed:
+            return {"state": "APPROVED", "rounds": round_no,
+                    "code": code, "history": history}
+
+        # 미통과 — 원문으로 피드백 전달
+        feedback = f"[리뷰 판정]\n{review}\n\n[테스트 결과]\n{test_output}"
+
+    # 3회 초과 — 최선 결과 반환
+    return {
+        "state": "BEST_EFFORT",
+        "history": history,
+        "rounds": MAX_ROUNDS,
+        "code": code,
+        "remaining": feedback,
+    }
+
+if __name__ == "__main__":
+    # 부족한 요구로 재작업 루프 확인
+    result = build_with_review("인원이 수용 인원을 넘는지만 보면 됩니다")
+    print(f"최종 상태: {result['state']} (라운드: {result['rounds']})")
+확인
+부족한 요구 실행 시 — 1회차 NEEDS_CHANGES, 이후 회차에서 APPROVED 흐름이 로그에 기록
+3회 초과 시 — {"state": "BEST_EFFORT", "remaining": ...} 반환, 무한 루프 없음
+재작업 시 — Reviewer 지적 + Tester 실패 로그가 요약 없이 원문으로 Coder에게 전달됨
+5
+미니 코딩 콘솔 — 루프의 판정을 브라우저에서 확인
+app.py:
+
+python
+
+import streamlit as st
+from orchestrator import build_with_review
+
+st.set_page_config(page_title="코딩 리뷰 루프", page_icon="🔄")
+st.title("🔄 리뷰·테스트 자기 교정 루프")
+
+if prompt := st.chat_input("코딩 요청을 입력하세요"):
+    with st.chat_message("user"):
+        st.write(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("에이전트 루프 실행 중..."):
+            result = build_with_review(prompt)
+
+        # 최종 상태 표시
+        if result["state"] == "APPROVED":
+            st.success(f"✅ 통과 (라운드 {result['rounds']})")
+        else:
+            st.warning(f"⚠️ 최선 결과 (라운드 {result['rounds']} — 상한 초과)")
+            st.text("남은 지적:")
+            st.text(result.get("remaining", ""))
+
+        # 라운드별 판정 — Reviewer·Tester 결과를 순서대로 표시
+        for h in result["history"]:
+            icon = "✅" if h["approved"] and h["passed"] else "🔁"
+            st.write(f"{icon} 라운드 {h['round']} — Reviewer: "
+                     f"{'APPROVED' if h['approved'] else 'NEEDS_CHANGES'} · Tester: {h['test']}")
+            if not h["approved"]:
+                with st.expander(f"라운드 {h['round']} 리뷰 지적"):
+                    st.text(h["review"])
+
+        # 최종 코드 표시
+        st.subheader("최종 코드")
+        try:
+            with open("workspace/reservation.py") as f:
+                st.code(f.read(), language="python")
+        except FileNotFoundError:
+            st.error("workspace/reservation.py를 찾을 수 없습니다.")
+실행:
+
+bash
+
+streamlit run app.py
+확인
+streamlit run app.py — 브라우저에서 정상 실행
+라운드별 판정 — Reviewer 판정(반려 사유/통과)과 Tester 결과가 순서대로 표시
+최종 코드 — workspace/reservation.py 내용이 st.code로 렌더됨
+
+도전 과제 방향
+격리 실행 — run_shell 대신 Docker 컨테이너 안에서 테스트를 실행하면 호스트 격리 달성
+합의 규칙 — review_code 함수를 2개(품질/보안)로 늘리고, 둘 다 APPROVED일 때만 통과
+비용 측정 — agent.event_loop_metrics.accumulated_usage로 회차별 토큰을 기록
+핵심 포인트
+루프 카운터는 코드에 — "3회까지만"을 프롬프트로 지시하면 모델이 셈을 놓쳐 계속 돌거나 1회로 끝낸다. 횟수·종료 조건을 코디네이터 코드가 판정해야 결과가 재현된다
+판정 형식 고정 = 자동화의 전제 — Reviewer의 APPROVED/NEEDS_CHANGES 접두어와 Tester의 마지막 줄 passed=N failed=M이 없으면 통과 여부를 문자열에서 추측하게 된다
+권한 분리가 패턴의 작동 조건 — Reviewer에게 쓰기 도구를 주면 지적 대신 직접 고쳐버려 Coder에게 갈 학습 신호가 사라진다
+근거는 원문으로 전달 — Reviewer의 지적 항목과 Tester의 stderr를 요약하면 Coder가 같은 실수를 반복한다
+
+AgentCore Runtime 서비스화
+고급
+코딩 에이전트를 AgentCore Runtime에 배포하고, InvokeAgentRuntimeCommand로 Git 작업을 하며, S3 Files로 작업 이력을 영속 저장하는 팀 코딩 서비스를 구축합니다.
+
+미션 브리핑
+앞 미션까지의 코딩 에이전트는 개발자 로컬에서만 돌았습니다. 이번 미션에서는 그 에이전트를 AgentCore Runtime에 배포해 팀 누구나 API 하나로 코딩을 요청할 수 있는 서비스로 만듭니다. Runtime의 Shell Command API로 세션 안에서 git clone·push를 실행하고, S3 Files로 작업 로그와 산출물을 세션이 끝나도 보존합니다. 마지막으로 이슈 번호를 주면 코드를 수정하고 PR을 올리는 엔드투엔드 흐름을 실증합니다.
+
+앞 미션의 코딩 에이전트(Coder·Reviewer·Tester)를 AgentCore Runtime에 배포하세요
+InvokeAgentRuntimeCommand로 세션 안에서 git clone → 코드 수정 → git push를 실행하세요
+S3 Files를 마운트해 작업 로그와 패치 파일을 세션 종료 후에도 보존하세요
+이슈 번호 하나를 주면 clone → 수정 → 테스트 → push → PR 생성까지 자동으로 완주하는 것을 실증하세요
+팀원이 쓸 미니 웹 콘솔을 만들어 요청 입력과 작업 이력 조회를 한 화면에서 처리하세요
+선행 조건
+앞 미션의 labs/dining-coder/ 프로젝트(Coder·Reviewer·Tester)가 완성된 상태
+AgentCore CLI 설치 + CDK Bootstrap 완료
+CodeCommit 또는 GitHub 리포지토리 1개 (에이전트가 push할 대상)
+S3 Files 마운트용 VPC — 서브넷 2개와 보안 그룹 1개 (기본 VPC 재사용 가능)
+
+목표
+코딩 에이전트를 AgentCore Runtime에 배포 — agentcore deploy 성공, 상태 READY
+InvokeAgentRuntimeCommand로 세션 안에서 git clone·git push 실행 — 명령 출력 스트리밍 확인
+S3 Files 마운트 — 세션 종료 후에도 작업 로그(work-log.json)가 S3 버킷에 보존
+엔드투엔드 실증 — 이슈 번호를 주면 clone → 수정 → 테스트 통과 → push → PR URL 반환
+팀 콘솔 UI — Streamlit 화면에서 요청을 넣고 작업 이력을 표로 조회
+제약 조건
+프로젝트 디렉터리: labs/mission-coding-runtime/
+에이전트 프로젝트명: CodingService (agentcore create)
+Runtime에 배포된 에이전트는 앞 미션의 Coder·Reviewer·Tester 패턴을 그대로 포팅 — 새 패턴을 발명하지 않습니다
+Shell Command는 InvokeAgentRuntimeCommand API 사용 — 에이전트 코드 안에서 subprocess 직접 호출 금지
+S3 Files 버킷명: coding-service-files-<YOUR_ACCOUNT_ID>
+S3 Files 마운트 경로: /mnt/persistent — BYO 파일시스템은 /mnt 하위 1단계만 허용되며 VPC 연결이 필요합니다
+Git 리포지토리: CodeCommit dining-reservation (또는 기존 리포지토리 재사용)
+팀 콘솔은 Streamlit 단일 파일 console_app.py — 새 프레임워크 도입 금지
+모델: us.anthropic.claude-sonnet-4-6
+리전: us-west-2
+
+힌트
+핵심 패턴
+
+Shell Command API로 git 작업 —
+body
+에 명령을 담고 응답은
+stream
+이벤트로 옵니다:
+python
+
+response = agentcore_client.invoke_agent_runtime_command(
+    agentRuntimeArn=runtime_arn,
+    runtimeSessionId=session_id,
+    contentType="application/json",
+    accept="application/vnd.amazon.eventstream",
+    body={"command": "git clone ... /workspace/repo", "timeout": 300},
+)
+S3 Files 마운트 설정 (
+agentcore/config.yaml
+) — Access Point ARN과
+/mnt
+하위 경로:
+yaml
+
+filesystemConfigurations:
+  - s3FilesAccessPoint:
+      accessPointArn: <YOUR_S3_FILES_ACCESS_POINT_ARN>
+      mountPath: /mnt/persistent
+작업 로그 영속 저장 — 마운트 경로에 그대로 파일로 씁니다:
+python
+
+LOG_PATH = Path("/mnt/persistent/work-log.json")
+logs = json.loads(LOG_PATH.read_text()) if LOG_PATH.exists() else []
+logs.append(entry)
+LOG_PATH.write_text(json.dumps(logs, ensure_ascii=False, indent=2))
+트러블슈팅
+
+git push
+권한 오류: Runtime 실행 역할에
+codecommit:GitPush
+권한 필요
+Shell Command 타임아웃:
+body
+의
+timeout
+을 큰 리포지토리에 맞춰 늘립니다
+S3 Files 미마운트:
+filesystemConfigurations
+의 Access Point ARN, VPC 연결, Runtime 역할의 S3 권한 확인
+
+1
+환경 확인
+bash
+
+node --version
+agentcore --version
+python3 --version
+pip install "strands-agents>=1.43" "bedrock-agentcore>=1.15" boto3
+aws sts get-caller-identity --region us-west-2
+aws cloudformation describe-stacks \
+    --stack-name CDKToolkit \
+    --region us-west-2 \
+    --query "Stacks[0].StackStatus"
+ls labs/dining-coder/{tools,coder,reviewer,tester,orchestrator}.py
+확인
+AgentCore CLI 버전 출력 정상
+CDK Bootstrap 스택 상태 CREATE_COMPLETE 또는 UPDATE_COMPLETE
+labs/dining-coder/ 프로젝트 파일 5종 존재
+2
+AgentCore Runtime 배포
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+bash
+
+mkdir -p labs/mission-coding-runtime && cd labs/mission-coding-runtime
+agentcore create --name CodingService --framework Strands --model-provider Bedrock --memory none
+python
+
+# --- CodingService/app/CodingService/main.py ---
+from bedrock_agentcore import BedrockAgentCoreApp
+from strands import Agent, tool
+from strands.models import BedrockModel
+import json
+import subprocess
+from pathlib import Path
+from datetime import datetime, timezone
+
+WORKSPACE = Path("/workspace")
+PERSISTENT = Path("/mnt/persistent")
+
+SYSTEM_PROMPT = """당신은 팀 코딩 에이전트입니다.
+자연어 코딩 요청을 받아 코드를 작성하고 테스트합니다.
+workspace 안에서만 작업하고, 완료 후 결과를 보고합니다."""
+
+@tool
+def run_shell(command: str) -> str:
+    """workspace 안에서 셸 명령을 실행합니다."""
+    blocked = ["rm -rf /", "shutdown", "reboot", "mkfs"]
+    if any(b in command for b in blocked):
+        return f"거부: 파괴적 명령 '{command}'"
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(WORKSPACE),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        output = result.stdout + result.stderr
+        return output if output.strip() else f"(exit {result.returncode})"
+    except subprocess.TimeoutExpired:
+        return "오류: 명령 실행 시간 초과 (120초)"
+
+@tool
+def read_file(path: str) -> str:
+    """workspace 안의 파일을 읽습니다."""
+    target = (WORKSPACE / path).resolve()
+    if not target.is_relative_to(WORKSPACE):
+        return f"거부: workspace 밖 경로 '{path}'"
+    if not target.exists():
+        return f"오류: 파일 없음 '{path}'"
+    return target.read_text()
+
+@tool
+def write_file(path: str, content: str) -> str:
+    """workspace 안에 파일을 씁니다."""
+    target = (WORKSPACE / path).resolve()
+    if not target.is_relative_to(WORKSPACE):
+        return f"거부: workspace 밖 경로 '{path}'"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
+    return f"저장 완료: {path}"
+
+def append_work_log(request: str, result: str):
+    """작업 로그를 영속 경로에 기록합니다."""
+    log_path = PERSISTENT / "work-log.json"
+    logs = json.loads(log_path.read_text()) if log_path.exists() else []
+    logs.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "request": request,
+        "result": result[:500],
+    })
+    log_path.write_text(
+        json.dumps(logs, ensure_ascii=False, indent=2)
+    )
+
+model = BedrockModel(
+    model_id="us.anthropic.claude-sonnet-4-6",
+    region_name="us-west-2",
+)
+agent = Agent(
+    model=model,
+    system_prompt=SYSTEM_PROMPT,
+    tools=[run_shell, read_file, write_file],
+)
+
+app = BedrockAgentCoreApp()
+
+@app.entrypoint
+def my_agent(payload):
+    prompt = payload.get("prompt", "")
+    result = str(agent(prompt))
+    append_work_log(request=prompt, result=result)
+    return {"result": result}
+bash
+
+# 로컬 테스트
+cd CodingService
+agentcore dev
+# 다른 터미널에서:
+# curl -X POST http://localhost:8080/invocations -d '{"prompt":"예약 인원 검증 함수를 만들어 주세요"}'
+
+# 배포
+agentcore deploy -y
+확인
+agentcore dev — 로컬에서 코딩 요청에 정상 응답
+agentcore deploy — 배포 성공, Runtime 상태 READY
+3
+Shell Command로 Git 작업
+python
+
+# --- test_invoke.py ---
+import boto3
+import json
+import sys
+import uuid
+
+agentcore_client = boto3.client(
+    "bedrock-agentcore",
+    region_name="us-west-2",
+)
+
+RUNTIME_ARN = "<YOUR_RUNTIME_ARN>"
+# runtimeSessionId는 호출자가 만들어 전달하는 입력값입니다 (33자 이상)
+SESSION_ID = f"coding-service-{uuid.uuid4().hex}"
+
+def run_command(command: str, timeout: int = 300) -> int:
+    """세션 안에서 셸 명령을 실행하고 종료 코드를 반환합니다."""
+    response = agentcore_client.invoke_agent_runtime_command(
+        agentRuntimeArn=RUNTIME_ARN,
+        runtimeSessionId=SESSION_ID,
+        contentType="application/json",
+        accept="application/vnd.amazon.eventstream",
+        body={"command": command, "timeout": timeout},
+    )
+    exit_code = None
+    for event in response.get("stream", []):
+        chunk = event.get("chunk", {})
+        if "contentDelta" in chunk:
+            delta = chunk["contentDelta"]
+            if delta.get("stdout"):
+                print(delta["stdout"], end="")
+            if delta.get("stderr"):
+                print(delta["stderr"], end="", file=sys.stderr)
+        if "contentStop" in chunk:
+            exit_code = chunk["contentStop"].get("exitCode")
+    return exit_code
+
+# 1. 세션 시작 — 에이전트 호출
+response = agentcore_client.invoke_agent_runtime(
+    agentRuntimeArn=RUNTIME_ARN,
+    runtimeSessionId=SESSION_ID,
+    payload=json.dumps({
+        "prompt": "작업 준비 완료를 알려 주세요"
+    }).encode(),
+)
+print(f"세션 시작: {SESSION_ID}")
+
+# 2. Shell Command — git clone
+clone_exit = run_command(
+    "git clone codecommit::us-west-2://dining-reservation /workspace/repo"
+)
+print(f"git clone exit: {clone_exit}")
+
+# 3. 에이전트에게 코드 수정 요청 — 같은 세션이므로 파일시스템을 공유합니다
+response = agentcore_client.invoke_agent_runtime(
+    agentRuntimeArn=RUNTIME_ARN,
+    runtimeSessionId=SESSION_ID,
+    payload=json.dumps({
+        "prompt": "repo/reservation.py에 예약 인원 검증 함수를 추가해 주세요"
+    }).encode(),
+)
+body = json.loads(response["response"].read())
+print(body["result"][:200])
+
+# 4. Shell Command — git push
+push_exit = run_command(
+    "cd /workspace/repo && git add -A && "
+    "git commit -m 'feat: add capacity validation' && git push"
+)
+print(f"git push exit: {push_exit}")
+확인
+git clone 명령이 세션 안에서 성공 (exit code 0)
+에이전트가 reservation.py 파일을 생성/수정
+git push 후 CodeCommit에 커밋 반영 확인
+4
+S3 Files 영속 저장
+bash
+
+# S3 버킷과 Files Access Point 생성
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+aws s3 mb "s3://coding-service-files-${ACCOUNT_ID}" --region us-west-2
+
+# Access Point ARN 확인 (BYO 파일시스템 마운트에 필요)
+aws s3control list-access-points \
+    --account-id "${ACCOUNT_ID}" \
+    --region us-west-2 \
+    --query "AccessPointList[?Bucket=='coding-service-files-${ACCOUNT_ID}'].AccessPointArn" \
+    --output text
+yaml
+
+# CodingService/agentcore/config.yaml — runtimes[0]에 마운트와 VPC 추가
+    networkMode: VPC
+    networkConfig:
+      subnets: [<YOUR_SUBNET_ID_1>, <YOUR_SUBNET_ID_2>]
+      securityGroups: [<YOUR_SECURITY_GROUP_ID>]
+    filesystemConfigurations:
+      - s3FilesAccessPoint:
+          accessPointArn: <YOUR_S3_FILES_ACCESS_POINT_ARN>
+          mountPath: /mnt/persistent
+BYO 파일시스템은 VPC 필수
+S3 Files·EFS 마운트는 VPC 연결이 필요하고, 마운트 경로는 /mnt 하위 1단계만 허용됩니다. 세션별 격리 스토리지(sessionStorage)는 VPC 없이 임의 경로에 마운트할 수 있지만 세션 간 공유가 되지 않습니다.
+
+bash
+
+# 재배포
+cd CodingService && agentcore deploy -y
+
+# 코딩 요청 2회 실행 후 확인
+python test_invoke.py
+python test_invoke.py
+
+# 세션 종료 후 S3에서 로그 확인
+aws s3 cp "s3://coding-service-files-${ACCOUNT_ID}/work-log.json" ./work-log.json
+cat work-log.json
+확인
+S3 버킷에 work-log.json 존재
+파일 내용에 2회 작업 기록(timestamp, request, result) 포함
+세션 종료 후에도 파일이 보존됨
+5
+이슈 to PR 자동화
+python
+
+# --- test_issue_to_pr.py ---
+import boto3
+import json
+import sys
+import uuid
+
+agentcore_client = boto3.client(
+    "bedrock-agentcore",
+    region_name="us-west-2",
+)
+
+RUNTIME_ARN = "<YOUR_RUNTIME_ARN>"
+SESSION_ID = f"issue-to-pr-{uuid.uuid4().hex}"
+
+# 에이전트에게 이슈 해결 요청
+response = agentcore_client.invoke_agent_runtime(
+    agentRuntimeArn=RUNTIME_ARN,
+    runtimeSessionId=SESSION_ID,
+    payload=json.dumps({
+        "prompt": (
+            "이슈 #1을 해결해 주세요. "
+            "요구사항: 예약 시 매장 영업시간(11:00-22:00)을 검증하는 로직 추가. "
+            "dining-reservation 리포지토리에서 작업하고 PR을 올려 주세요."
+        )
+    }).encode(),
+)
+body = json.loads(response["response"].read())
+print(body["result"])
+
+# Shell Command로 PR 생성 — 같은 SESSION_ID를 전달해 동일 세션에서 실행합니다
+response = agentcore_client.invoke_agent_runtime_command(
+    agentRuntimeArn=RUNTIME_ARN,
+    runtimeSessionId=SESSION_ID,
+    contentType="application/json",
+    accept="application/vnd.amazon.eventstream",
+    body={
+        "command": (
+            "cd /workspace/repo && "
+            "git checkout -b fix/issue-1 && "
+            "git push -u origin fix/issue-1 && "
+            "aws codecommit create-pull-request "
+            "--title 'feat: add business hours validation' "
+            "--targets repositoryName=dining-reservation,sourceReference=fix/issue-1,destinationReference=main "
+            "--region us-west-2 "
+            "--query 'pullRequest.pullRequestId' --output text"
+        ),
+        "timeout": 300,
+    },
+)
+for event in response.get("stream", []):
+    chunk = event.get("chunk", {})
+    if "contentDelta" in chunk and chunk["contentDelta"].get("stdout"):
+        print(f"PR 생성: {chunk['contentDelta']['stdout'].strip()}")
+확인
+에이전트 응답에 PR URL 또는 PR ID 포함
+CodeCommit에 PR이 생성되어 있고, 변경 내용이 이슈 요구사항과 일치
+work-log.json에 이번 작업 기록 추가됨
+6
+팀 콘솔 UI
+python
+
+# --- console_app.py ---
+import json
+import uuid
+
+import boto3
+import streamlit as st
+
+REGION = "us-west-2"
+RUNTIME_ARN = "<YOUR_RUNTIME_ARN>"
+BUCKET = "<YOUR_BUCKET_NAME>"  # coding-service-files-<YOUR_ACCOUNT_ID>
+
+agentcore_client = boto3.client("bedrock-agentcore", region_name=REGION)
+s3_client = boto3.client("s3", region_name=REGION)
+
+st.set_page_config(page_title="팀 코딩 콘솔", page_icon="🛠️")
+st.title("🛠️ 팀 코딩 콘솔")
+
+def load_work_log() -> list[dict]:
+    """S3에서 작업 이력을 읽어 시간 역순으로 반환합니다."""
+    try:
+        obj = s3_client.get_object(Bucket=BUCKET, Key="work-log.json")
+        logs = json.loads(obj["Body"].read())
+    except s3_client.exceptions.NoSuchKey:
+        return []
+    return sorted(logs, key=lambda e: e["timestamp"], reverse=True)
+
+request_text = st.text_area(
+    "코딩 요청",
+    placeholder="예: reservation.py에 영업시간 검증을 추가해 주세요",
+)
+
+if st.button("실행", type="primary") and request_text.strip():
+    with st.spinner("에이전트가 작업 중입니다..."):
+        response = agentcore_client.invoke_agent_runtime(
+            agentRuntimeArn=RUNTIME_ARN,
+            runtimeSessionId=f"console-{uuid.uuid4().hex}",
+            payload=json.dumps({"prompt": request_text}).encode(),
+        )
+        body = json.loads(response["response"].read())
+    st.success("완료")
+    st.markdown(body["result"])
+
+st.divider()
+st.subheader("작업 이력")
+
+logs = load_work_log()
+if logs:
+    st.dataframe(
+        [
+            {
+                "시간": entry["timestamp"],
+                "요청": entry["request"][:60],
+                "결과 요약": entry["result"][:80],
+            }
+            for entry in logs
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+else:
+    st.info("아직 작업 이력이 없습니다. 위에서 요청을 실행해 보세요.")
+bash
+
+pip install streamlit
+streamlit run console_app.py
+확인
+streamlit run console_app.py 실행 후 브라우저에서 콘솔 화면 표시
+입력한 코딩 요청의 응답이 화면에 표시됨
+작업 이력 표에 방금 실행한 요청 2건이 시간 역순으로 표시됨
+
+도전 과제 방향
+GitHub 연동: Secrets Manager에 PAT를 저장하고 Runtime 환경 변수로 주입한 뒤, 셸 명령에서 gh auth login --with-token으로 인증하면 gh pr create까지 같은 세션에서 처리됩니다
+멀티세션 협업: 서로 다른 runtimeSessionId로 동시 호출한 뒤 각 세션에서 /workspace에 다른 파일을 만들어 교차 조회하면 격리를 실증할 수 있습니다 — 공유가 필요한 데이터만 /mnt/persistent에 둡니다
+Slack 알림: work-log append 직후 Slack 웹훅을 호출하되, 웹훅 URL은 Secrets Manager에 두고 실패해도 본 작업이 롤백되지 않도록 예외를 삼킵니다
+핵심 포인트
+AgentCore Runtime은 세션마다 격리된 MicroVM을 제공하므로 팀원이 동시에 요청해도 간섭이 없습니다
+runtimeSessionId는 호출자가 만들어 전달하는 멱등 키이므로, 같은 값을 넘기면 대화와 셸 명령이 같은 세션·파일시스템을 공유합니다
+InvokeAgentRuntimeCommand의 출력은 이벤트 스트림으로 오므로 contentDelta로 진행 상황을 보고 contentStop의 exitCode로 성공을 판정합니다
+S3 Files 마운트는 세션 수명과 무관하게 데이터를 보존하므로 작업 이력 추적과 감사에 적합합니다
+Runtime 배포 후에는 IAM 권한만으로 호출이 제어되므로 별도 인증 서버 없이 팀 서비스로 운영할 수 있습니다
+
+Lambda MicroVMs 코드 샌드박스
+고급
+코딩 에이전트가 실행하는 코드를 격리된 Lambda MicroVM 안에서 돌려, 호스트 접근 불가·테넌트 간 격리·종료 시 상태 소멸을 실증합니다.
+
+미션 브리핑
+앞 미션에서 코딩 에이전트는 Runtime 안에서 코드를 실행했지만, 악의적·실수적 코드가 호스트에 영향을 줄 위험은 남아 있습니다. 이번 미션에서는 Lambda MicroVM을 코드 실행 샌드박스로 도입합니다. MicroVM은 Firecracker 전용 커널 위에서 돌아가므로 호스트 파일시스템 접근이 원천 차단되고, 사용자마다 전용 환경이 배정됩니다. 종료하면 메모리·디스크 상태가 함께 사라져 흔적이 남지 않습니다. Tester 에이전트가 MicroVM의 전용 HTTPS 엔드포인트로 pytest를 실행하고 결과를 받아오는 엔드투엔드 연동까지 구축합니다.
+
+Dockerfile과 샌드박스 서버를 zip으로 묶어 S3에 올리고 CreateMicrovmImage로 이미지를 등록하세요
+RunMicrovm으로 인스턴스를 띄우고, 인증 토큰으로 전용 HTTPS 엔드포인트를 호출하세요
+AgentCore Runtime의 Tester가 MicroVM에서 pytest를 실행하고 결과를 파싱하도록 연동하세요
+호스트 파일시스템 접근 불가, MicroVM 간 격리, 종료 시 상태 소멸을 실증하세요
+팀이 쓸 샌드박스 콘솔을 만들어 코드 실행과 격리 증거를 한 화면에서 확인하세요
+선행 조건
+앞 미션의 labs/mission-coding-runtime/ 프로젝트(CodingService)가 배포된 상태
+AWS CLI v2 + Lambda MicroVMs API 접근 권한
+Python 3.12 이상 — 이미지 빌드는 Lambda가 수행하므로 로컬 Docker는 필요하지 않습니다
+아티팩트 업로드용 S3 버킷 1개
+
+목표
+MicroVM 이미지 등록 — Dockerfile과 앱을 zip으로 S3에 올려 CreateMicrovmImage 성공, 상태 CREATED
+MicroVM 실행 + 엔드포인트 호출 — RunMicrovm으로 endpoint 확보, 인증 토큰으로 /health 200 응답
+에이전트 연동 — Tester가 MicroVM에서 pytest를 실행하고 passed=N failed=M 결과를 반환
+격리 실증 — 호스트 파일시스템 접근 불가, 두 MicroVM 상호 불가시, 종료 후 상태 소멸 확인
+샌드박스 콘솔 UI — Streamlit 화면에서 코드를 실행하고 격리 증거를 함께 확인
+제약 조건
+프로젝트 디렉터리: labs/mission-coding-microvm/
+MicroVM 이미지명: python312-sandbox
+베이스 이미지: Lambda 관리형 베이스 이미지 — ARN은 list-managed-microvm-images로 조회합니다
+컨테이너 베이스: public.ecr.aws/lambda/microvms:al2023-minimal + Python 3.12 + pytest + 비root 사용자 sandbox
+코드 아티팩트: Dockerfile과 앱을 sandbox-image.zip으로 묶어 S3 버킷 microvm-artifacts-<YOUR_ACCOUNT_ID>에 업로드
+샌드박스 서버: FastAPI 단일 파일 sandbox_server.py — 포트 8080, 경로 /health·/run-tests
+Idle Policy: maxIdleDurationSeconds=300, suspendedDurationSeconds=600, autoResumeEnabled=true
+Ingress 커넥터: ALL_INGRESS(HTTP 호출)와 SHELL_INGRESS(셸 디버깅) 두 ARN을 함께 부착
+에이전트 도구 코드에서 변수명 client 단독 사용 금지 - microvms_client, agentcore_client 등 명확한 이름 사용
+샌드박스 콘솔은 Streamlit 단일 파일 sandbox_console.py — 새 프레임워크 도입 금지
+모델: us.anthropic.claude-sonnet-4-6
+리전: us-west-2
+
+힌트
+핵심 패턴
+
+이미지 등록 — Dockerfile을 직접 넘기지 않고 zip의 S3 URI를 넘깁니다:
+python
+
+create_response = microvms_client.create_microvm_image(
+    name="python312-sandbox",
+    baseImageArn=BASE_IMAGE_ARN,
+    buildRoleArn=BUILD_ROLE_ARN,
+    codeArtifact={"uri": "s3://microvm-artifacts-<YOUR_ACCOUNT_ID>/sandbox-image.zip"},
+)
+MicroVM 실행 — 커넥터는 이름이 아니라 ARN입니다:
+python
+
+run_response = microvms_client.run_microvm(
+    imageIdentifier=create_response["imageArn"],
+    ingressNetworkConnectors=[ALL_INGRESS_ARN, SHELL_INGRESS_ARN],
+    idlePolicy={"maxIdleDurationSeconds": 300, "suspendedDurationSeconds": 600, "autoResumeEnabled": True},
+)
+엔드포인트 호출 — 토큰을
+X-aws-proxy-auth
+헤더에 담습니다:
+python
+
+token = microvms_client.create_microvm_auth_token(
+    microvmIdentifier=run_response["microvmId"],
+    expirationInMinutes=30,
+    allowedPorts=[{"port": 8080}],
+)["authToken"]["X-aws-proxy-auth"]
+정리 — 종료는
+terminate_microvm
+입니다:
+python
+
+microvms_client.terminate_microvm(microvmIdentifier=microvm_id)
+트러블슈팅
+
+CreateMicrovmImage 후 CREATE_FAILED:
+stateReason
+과 빌드 로그 그룹을 확인합니다. 대부분 Dockerfile이 zip 루트에 없거나 빌드 역할의
+s3:GetObject
+누락입니다
+엔드포인트 403: 토큰 만료(최대 60분) 또는
+allowedPorts
+에 없는 포트 호출입니다. 8080이 아닌 포트는
+X-aws-proxy-port
+헤더로 지정합니다
+셸 접속 실패:
+SHELL_INGRESS
+커넥터 없이 실행했거나 서브프로토콜에
+lambda-microvms.port.8022
+가 빠진 경우입니다
+pytest 출력 파싱 오류:
+--tb=short -q
+옵션으로 출력 형식을 통일하고 마지막 줄의
+N passed, M failed
+패턴을 매칭합니다
+
+1
+환경 확인
+bash
+
+aws --version
+python3 --version
+pip install "strands-agents>=1.43" "bedrock-agentcore>=1.15" boto3 requests websockets
+aws sts get-caller-identity --region us-west-2
+aws lambda-microvms list-microvm-images --region us-west-2
+
+# 베이스 이미지 ARN 확보 — 다음 단계의 --base-image-arn 값입니다
+aws lambda-microvms list-managed-microvm-images --region us-west-2
+
+ls labs/mission-coding-runtime/CodingService/
+확인
+Lambda MicroVMs API 호출 성공 (빈 목록이어도 OK)
+관리형 베이스 이미지 ARN 확보
+labs/mission-coding-runtime/CodingService/ 디렉터리 존재
+2
+MicroVM 이미지 빌드
+Dockerfile을 API에 직접 넘기지 않습니다. Dockerfile과 앱을 zip으로 묶어 S3에 올리고, 그 URI를 codeArtifact로 지정하면 Lambda가 관리형 베이스 이미지 위에서 빌드하고 스냅샷을 뜹니다.
+
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+bash
+
+mkdir -p labs/mission-coding-microvm
+cd labs/mission-coding-microvm
+python
+
+# --- sandbox_server.py ---
+import subprocess
+import sys
+from pathlib import Path
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+SANDBOX = Path("/sandbox")
+app = FastAPI()
+
+class TestRequest(BaseModel):
+    source_code: str
+    source_filename: str
+    test_code: str
+
+@app.get("/health")
+def health():
+    """샌드박스 준비 상태와 런타임 버전을 반환합니다."""
+    pytest_version = subprocess.run(
+        [sys.executable, "-m", "pytest", "--version"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    return {"status": "ok", "python": sys.version.split()[0], "pytest": pytest_version}
+
+@app.post("/run-tests")
+def run_tests(request: TestRequest):
+    """소스와 테스트를 /sandbox에 쓰고 pytest를 실행합니다."""
+    (SANDBOX / request.source_filename).write_text(request.source_code)
+    (SANDBOX / "test_code.py").write_text(request.test_code)
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", "test_code.py", "--tb=short", "-q"],
+        cwd=SANDBOX, capture_output=True, text=True, timeout=300,
+    )
+    return {"output": completed.stdout + completed.stderr, "exitCode": completed.returncode}
+dockerfile
+
+# --- Dockerfile ---
+FROM public.ecr.aws/lambda/microvms:al2023-minimal
+
+RUN dnf install -y python3.12 python3.12-pip shadow-utils && dnf clean all
+
+RUN pip3.12 install --no-cache-dir pytest coverage fastapi uvicorn
+
+RUN useradd -m -s /bin/bash sandbox \
+    && mkdir -p /sandbox \
+    && chown sandbox:sandbox /sandbox
+
+COPY sandbox_server.py /app/sandbox_server.py
+
+USER sandbox
+WORKDIR /sandbox
+EXPOSE 8080
+
+CMD ["python3.12", "-m", "uvicorn", "--app-dir", "/app", "sandbox_server:app", "--host", "0.0.0.0", "--port", "8080"]
+bash
+
+# 빌드 역할 — Lambda가 아티팩트를 읽고 빌드 로그를 쓸 수 있어야 합니다
+cat > build-role-trust.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "lambda.amazonaws.com"},
+    "Action": ["sts:AssumeRole", "sts:TagSession"]
+  }]
+}
+EOF
+
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+aws iam create-role \
+    --role-name MicroVMSandboxBuildRole \
+    --assume-role-policy-document file://build-role-trust.json
+
+aws iam put-role-policy \
+    --role-name MicroVMSandboxBuildRole \
+    --policy-name MicroVMBuildAccess \
+    --policy-document "{
+      \"Version\": \"2012-10-17\",
+      \"Statement\": [
+        {\"Effect\": \"Allow\", \"Action\": \"s3:GetObject\",
+         \"Resource\": \"arn:aws:s3:::microvm-artifacts-${ACCOUNT_ID}/*\"},
+        {\"Effect\": \"Allow\",
+         \"Action\": [\"logs:CreateLogGroup\", \"logs:CreateLogStream\", \"logs:PutLogEvents\"],
+         \"Resource\": \"*\"}
+      ]
+    }"
+python
+
+# --- register_image.py ---
+import subprocess
+import time
+
+import boto3
+
+REGION = "us-west-2"
+ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
+BUCKET = f"microvm-artifacts-{ACCOUNT_ID}"
+BASE_IMAGE_ARN = "<YOUR_BASE_IMAGE_ARN>"  # list-managed-microvm-images 결과
+BUILD_ROLE_ARN = f"arn:aws:iam::{ACCOUNT_ID}:role/MicroVMSandboxBuildRole"
+
+microvms_client = boto3.client("lambda-microvms", region_name=REGION)
+s3_client = boto3.client("s3", region_name=REGION)
+
+# Dockerfile은 zip 루트에 있어야 합니다
+subprocess.run(["zip", "-r", "sandbox-image.zip", "Dockerfile", "sandbox_server.py"], check=True)
+s3_client.upload_file("sandbox-image.zip", BUCKET, "sandbox-image.zip")
+
+create_response = microvms_client.create_microvm_image(
+    name="python312-sandbox",
+    baseImageArn=BASE_IMAGE_ARN,
+    buildRoleArn=BUILD_ROLE_ARN,
+    codeArtifact={"uri": f"s3://{BUCKET}/sandbox-image.zip"},
+    resources=[{"minimumMemoryInMiB": 2048}],
+    description="Python 3.12 + pytest sandbox for code execution",
+)
+image_arn = create_response["imageArn"]
+print(f"Image ARN: {image_arn}, state: {create_response['state']}")
+
+# 빌드는 비동기입니다 — CREATING → CREATED
+while True:
+    image = microvms_client.get_microvm_image(imageIdentifier=image_arn)
+    state = image["state"]
+    print(f"state: {state}")
+    if state != "CREATING":
+        break
+    time.sleep(15)
+
+if state != "CREATED":
+    raise SystemExit(f"빌드 실패: {image.get('stateReason')}")
+print(f"버전: {image['latestActiveImageVersion']}")
+bash
+
+aws s3 mb "s3://microvm-artifacts-$(aws sts get-caller-identity --query Account --output text)" --region us-west-2
+python register_image.py
+확인
+sandbox_server.py와 Dockerfile이 labs/mission-coding-microvm/에 존재
+sandbox-image.zip이 S3 버킷에 업로드됨
+CreateMicrovmImage 호출 성공, 상태가 CREATING에서 CREATED로 전환
+3
+MicroVM 실행과 엔드포인트 호출
+MicroVM은 전용 HTTPS 엔드포인트를 갖습니다. 인증 토큰을 X-aws-proxy-auth 헤더에 담아 호출하고, 기본 라우팅 포트는 8080입니다.
+
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+python
+
+# --- sandbox_runner.py ---
+import time
+
+import boto3
+import requests
+
+REGION = "us-west-2"
+IMAGE_ARN = "<YOUR_IMAGE_ARN>"
+# 커넥터는 이름이 아니라 ARN입니다
+ALL_INGRESS_ARN = f"arn:aws:lambda:{REGION}:aws:network-connector:aws-network-connector:ALL_INGRESS"
+SHELL_INGRESS_ARN = f"arn:aws:lambda:{REGION}:aws:network-connector:aws-network-connector:SHELL_INGRESS"
+
+microvms_client = boto3.client("lambda-microvms", region_name=REGION)
+
+def create_sandbox() -> tuple[str, str]:
+    """MicroVM을 실행하고 (microvm_id, endpoint)를 반환합니다."""
+    run_response = microvms_client.run_microvm(
+        imageIdentifier=IMAGE_ARN,
+        ingressNetworkConnectors=[ALL_INGRESS_ARN, SHELL_INGRESS_ARN],
+        idlePolicy={
+            "maxIdleDurationSeconds": 300,
+            "suspendedDurationSeconds": 600,
+            "autoResumeEnabled": True,
+        },
+    )
+    microvm_id = run_response["microvmId"]
+    endpoint = run_response["endpoint"]
+    print(f"MicroVM started: {microvm_id} ({run_response['state']})")
+
+    # PENDING → RUNNING 대기
+    while microvms_client.get_microvm(microvmIdentifier=microvm_id)["state"] == "PENDING":
+        time.sleep(2)
+    return microvm_id, endpoint
+
+def get_auth_token(microvm_id: str, port: int = 8080) -> str:
+    """엔드포인트 호출용 인증 토큰을 발급합니다 (최대 60분)."""
+    token_response = microvms_client.create_microvm_auth_token(
+        microvmIdentifier=microvm_id,
+        expirationInMinutes=30,
+        allowedPorts=[{"port": port}],
+    )
+    return token_response["authToken"]["X-aws-proxy-auth"]
+
+def run_tests_in_microvm(
+    endpoint: str,
+    auth_token: str,
+    source_code: str,
+    source_filename: str,
+    test_code: str,
+) -> dict:
+    """MicroVM의 /run-tests를 호출해 pytest 결과를 받습니다."""
+    response = requests.post(
+        f"https://{endpoint}/run-tests",
+        headers={"X-aws-proxy-auth": auth_token},
+        json={
+            "source_code": source_code,
+            "source_filename": source_filename,
+            "test_code": test_code,
+        },
+        timeout=310,
+    )
+    response.raise_for_status()
+    return response.json()
+
+def destroy_sandbox(microvm_id: str):
+    """MicroVM을 종료합니다 — 메모리·디스크 상태가 함께 사라집니다."""
+    microvms_client.terminate_microvm(microvmIdentifier=microvm_id)
+    print(f"MicroVM terminated: {microvm_id}")
+
+if __name__ == "__main__":
+    microvm_id, endpoint = create_sandbox()
+    auth_token = get_auth_token(microvm_id)
+
+    health = requests.get(
+        f"https://{endpoint}/health",
+        headers={"X-aws-proxy-auth": auth_token},
+        timeout=30,
+    )
+    print(f"/health {health.status_code}: {health.json()}")
+
+    result = run_tests_in_microvm(
+        endpoint=endpoint,
+        auth_token=auth_token,
+        source_code="",
+        source_filename="sample.py",
+        test_code="def test_add(): assert 1+1 == 2\n",
+    )
+    print(f"pytest output:\n{result['output']}")
+
+    destroy_sandbox(microvm_id)
+python
+
+# --- shell_check.py: 셸은 서브프로토콜로 인증하고 포트 8022로 붙습니다 ---
+import boto3
+import websockets.sync.client
+
+REGION = "us-west-2"
+MICROVM_ID = "<YOUR_MICROVM_ID>"
+ENDPOINT = "<YOUR_ENDPOINT>"
+
+microvms_client = boto3.client("lambda-microvms", region_name=REGION)
+shell_token = microvms_client.create_microvm_shell_auth_token(
+    microvmIdentifier=MICROVM_ID,
+    expirationInMinutes=15,
+)["authToken"]["X-aws-proxy-auth"]
+
+with websockets.sync.client.connect(
+    f"wss://{ENDPOINT}/shell",
+    subprotocols=[
+        f"lambda-microvms.authentication.{shell_token}",
+        "lambda-microvms",
+        "lambda-microvms.port.8022",
+    ],
+) as ws:
+    ws.send("whoami\n")
+    print(ws.recv(timeout=10))
+bash
+
+python sandbox_runner.py
+python shell_check.py
+확인
+RunMicrovm 성공 - microvmId와 endpoint 반환
+인증 토큰으로 /health 호출 시 200 응답
+/run-tests 응답에 1 passed 포함
+셸 접속 후 whoami → sandbox 출력
+4
+코딩 에이전트 연동
+
+👨‍💻 직접 코드
+
+👨‍💻 직접 확인
+python
+
+# --- tester_microvm.py ---
+import re
+
+from strands import Agent, tool
+from strands.models import BedrockModel
+
+from sandbox_runner import (
+    create_sandbox,
+    destroy_sandbox,
+    get_auth_token,
+    run_tests_in_microvm,
+)
+
+@tool
+def run_tests_in_sandbox(
+    test_code: str,
+    source_code: str,
+    source_filename: str,
+) -> str:
+    """MicroVM 샌드박스 안에서 pytest를 실행합니다."""
+    microvm_id, endpoint = create_sandbox()
+    try:
+        auth_token = get_auth_token(microvm_id)
+        result = run_tests_in_microvm(
+            endpoint=endpoint,
+            auth_token=auth_token,
+            source_code=source_code,
+            source_filename=source_filename,
+            test_code=test_code,
+        )
+        return parse_pytest_output(result["output"])
+    finally:
+        destroy_sandbox(microvm_id)
+
+def parse_pytest_output(output: str) -> str:
+    """pytest 출력에서 passed/failed 수를 추출합니다."""
+    passed_match = re.search(r"(\d+) passed", output)
+    failed_match = re.search(r"(\d+) failed", output)
+
+    passed = int(passed_match.group(1)) if passed_match else 0
+    failed = int(failed_match.group(1)) if failed_match else 0
+
+    summary = f"passed={passed} failed={failed}"
+
+    if failed > 0:
+        # 실패 로그 포함
+        return f"{summary}\n\n--- 실패 상세 ---\n{output}"
+    return summary
+
+TESTER_SYSTEM_PROMPT = """당신은 Tester 에이전트입니다.
+주어진 소스 코드에 대해 테스트를 작성하고 MicroVM 샌드박스에서 실행합니다.
+경계값, 오류 케이스, 정상 케이스를 모두 커버하세요.
+결과는 마지막 줄에 passed=N failed=M 형식으로 보고합니다."""
+
+tester_model = BedrockModel(
+    model_id="us.anthropic.claude-sonnet-4-6",
+    region_name="us-west-2",
+)
+
+tester_agent = Agent(
+    model=tester_model,
+    system_prompt=TESTER_SYSTEM_PROMPT,
+    tools=[run_tests_in_sandbox],
+)
+python
+
+# --- test_integration.py ---
+from strands import Agent
+from strands.models import BedrockModel
+
+from tester_microvm import tester_agent
+
+CODER_SYSTEM_PROMPT = """당신은 Coder 에이전트입니다.
+요청에 맞는 Python 함수를 작성합니다.
+경계값과 에러 처리를 빠짐없이 포함하세요."""
+
+coder_model = BedrockModel(
+    model_id="us.anthropic.claude-sonnet-4-6",
+    region_name="us-west-2",
+)
+coder_agent = Agent(
+    model=coder_model,
+    system_prompt=CODER_SYSTEM_PROMPT,
+    tools=[],
+)
+
+def run_integration_test():
+    """코디네이터가 Coder와 Tester를 조율하는 통합 테스트."""
+    request = "예약 인원 검증 함수를 작성해 주세요. 최소 1명, 최대 20명입니다."
+
+    # Coder에게 코드 작성 요청
+    coder_response = str(coder_agent(request))
+    print(f"[Coder] 응답 수신 ({len(coder_response)} chars)")
+
+    # Tester에게 테스트 실행 요청
+    test_request = (
+        f"다음 코드를 테스트해 주세요:\n\n{coder_response}\n\n"
+        "파일명은 reservation.py입니다. "
+        "경계값(0, 1, 20, 21)과 비정상 입력(음수, None)을 테스트하세요."
+    )
+    tester_response = str(tester_agent(test_request))
+    print(f"[Tester] 결과: {tester_response}")
+
+    return tester_response
+
+if __name__ == "__main__":
+    result = run_integration_test()
+    print(f"\n최종 결과: {result}")
+bash
+
+cd labs/mission-coding-microvm
+python test_integration.py
+확인
+sandbox_runner.py가 MicroVM 실행→테스트 실행→종료 사이클 완수
+Tester가 MicroVM에서 pytest 실행 결과를 정상 반환
+코디네이터 루프에서 Tester 판정이 passed=N failed=0으로 최종 통과
+5
+격리 실증
+격리 축은 호스트 파일시스템·테넌트 간·종료 시 소멸 3가지입니다. 네트워크 아웃바운드는 기본적으로 퍼블릭 인터넷이 열려 있으므로, 차단을 확인하는 축이 아니라 VPC egress 커넥터로 통제하는 대상으로 다룹니다.
+
+
+👨‍💻 직접 코드
+
+👨‍💻 직접 확인
+python
+
+# --- test_isolation.py ---
+import socket
+
+import boto3
+import requests
+
+from sandbox_runner import create_sandbox, destroy_sandbox, get_auth_token
+
+REGION = "us-west-2"
+microvms_client = boto3.client("lambda-microvms", region_name=REGION)
+
+def shell_exec(endpoint: str, auth_token: str, command: str) -> str:
+    """샌드박스 서버의 /run-tests를 통해 셸 명령의 출력을 얻습니다."""
+    response = requests.post(
+        f"https://{endpoint}/run-tests",
+        headers={"X-aws-proxy-auth": auth_token},
+        json={
+            "source_code": "",
+            "source_filename": "probe.py",
+            "test_code": (
+                "import subprocess\n"
+                "def test_probe():\n"
+                f"    out = subprocess.run({command!r}, shell=True, capture_output=True, text=True)\n"
+                "    print(out.stdout + out.stderr)\n"
+                "    assert True\n"
+            ),
+        },
+        timeout=60,
+    )
+    return response.json()["output"]
+
+def test_filesystem_isolation():
+    """호스트 파일시스템 격리 테스트."""
+    print("\n=== 1. 호스트 파일시스템 격리 ===")
+
+    microvm_id, endpoint = create_sandbox()
+    auth_token = get_auth_token(microvm_id)
+
+    host_hostname = socket.gethostname()
+    microvm_hostname = shell_exec(endpoint, auth_token, "cat /etc/hostname")
+    print(f"호스트 hostname: {host_hostname}")
+    print(f"MicroVM hostname: {microvm_hostname.strip()}")
+    assert host_hostname not in microvm_hostname, "hostname이 같으면 격리 실패"
+
+    root_listing = shell_exec(endpoint, auth_token, "ls /")
+    print(f"ls /:\n{root_listing}")
+
+    mount_result = shell_exec(endpoint, auth_token, "mount | grep -v proc | grep -v sys")
+    print(f"마운트 목록:\n{mount_result}")
+
+    destroy_sandbox(microvm_id)
+    print("✅ 파일시스템 격리 확인 완료")
+
+def test_tenant_isolation():
+    """MicroVM 간 격리 테스트."""
+    print("\n=== 2. MicroVM 간 격리 ===")
+
+    microvm_id_1, endpoint_1 = create_sandbox()
+    microvm_id_2, endpoint_2 = create_sandbox()
+    token_1 = get_auth_token(microvm_id_1)
+    token_2 = get_auth_token(microvm_id_2)
+
+    shell_exec(endpoint_1, token_1, "echo 'tenant-a' > /sandbox/evidence.txt")
+    own = shell_exec(endpoint_1, token_1, "cat /sandbox/evidence.txt")
+    print(f"1번 MicroVM - evidence.txt: {own.strip()[:80]}")
+    assert "tenant-a" in own
+
+    other = shell_exec(endpoint_2, token_2, "cat /sandbox/evidence.txt 2>&1")
+    print(f"2번 MicroVM - evidence.txt: {other.strip()[:80]}")
+    assert "tenant-a" not in other
+
+    destroy_sandbox(microvm_id_1)
+    destroy_sandbox(microvm_id_2)
+    print("✅ 테넌트 간 격리 확인 완료")
+
+def test_state_destruction():
+    """종료 시 상태 소멸 테스트."""
+    print("\n=== 3. 종료 시 상태 소멸 ===")
+
+    microvm_id_1, endpoint_1 = create_sandbox()
+    token_1 = get_auth_token(microvm_id_1)
+    shell_exec(endpoint_1, token_1, "echo 'secret-data-12345' > /sandbox/evidence.txt")
+    destroy_sandbox(microvm_id_1)
+    print("1번 MicroVM 종료됨")
+
+    microvm_id_2, endpoint_2 = create_sandbox()
+    token_2 = get_auth_token(microvm_id_2)
+    verify = shell_exec(endpoint_2, token_2, "cat /sandbox/evidence.txt 2>&1")
+    print(f"새 MicroVM - evidence.txt: {verify.strip()[:80]}")
+    assert "secret-data-12345" not in verify
+
+    destroy_sandbox(microvm_id_2)
+    print("✅ 상태 소멸 확인 완료 - 이전 상태 완전 소멸")
+
+if __name__ == "__main__":
+    test_filesystem_isolation()
+    test_tenant_isolation()
+    test_state_destruction()
+    print("\n🎉 모든 격리 테스트 통과!")
+bash
+
+cd labs/mission-coding-microvm
+python test_isolation.py
+확인
+호스트 파일시스템 접근 불가 확인
+두 MicroVM이 서로의 파일을 볼 수 없음 확인
+종료 후 새 MicroVM에 이전 파일이 없음 확인
+6
+샌드박스 콘솔 UI
+
+👨‍💻 직접 코드
+
+👨‍💻 직접 확인
+python
+
+# --- sandbox_console.py ---
+import streamlit as st
+
+from sandbox_runner import (
+    create_sandbox,
+    destroy_sandbox,
+    get_auth_token,
+    run_tests_in_microvm,
+)
+from test_isolation import shell_exec
+
+st.set_page_config(page_title="MicroVM 샌드박스 콘솔", layout="wide")
+st.title("MicroVM 샌드박스 콘솔")
+
+col_source, col_test = st.columns(2)
+source_code = col_source.text_area(
+    "소스 코드", height=240, value="def validate_party_size(n):\n    return 1 <= n <= 20\n"
+)
+test_code = col_test.text_area(
+    "테스트 코드",
+    height=240,
+    value="from reservation import validate_party_size\n\n"
+          "def test_ok(): assert validate_party_size(4)\n"
+          "def test_too_many(): assert not validate_party_size(21)\n",
+)
+
+if st.button("MicroVM에서 실행", type="primary"):
+    with st.spinner("MicroVM 실행 중..."):
+        microvm_id, endpoint = create_sandbox()
+        auth_token = get_auth_token(microvm_id)
+        try:
+            result = run_tests_in_microvm(
+                endpoint=endpoint,
+                auth_token=auth_token,
+                source_code=source_code,
+                source_filename="reservation.py",
+                test_code=test_code,
+            )
+            hostname = shell_exec(endpoint, auth_token, "cat /etc/hostname").strip()
+        finally:
+            destroy_sandbox(microvm_id)
+
+    st.subheader("pytest 출력")
+    st.code(result["output"], language="text")
+    st.caption(f"exit code: {result['exitCode']}")
+
+    # 격리 증거 — 실행마다 microvmId와 hostname이 달라집니다
+    st.sidebar.subheader("격리 증거")
+    st.sidebar.write(f"**microvmId**: `{microvm_id}`")
+    st.sidebar.write("**상태**: TERMINATED (실행 후 즉시 종료)")
+    st.sidebar.write(f"**/etc/hostname**: `{hostname}`")
+bash
+
+pip install streamlit
+cd labs/mission-coding-microvm
+streamlit run sandbox_console.py
+확인
+streamlit run sandbox_console.py 실행 후 브라우저에서 콘솔 화면 표시
+입력한 코드의 pytest 출력이 화면에 표시됨
+사이드바에 microvmId·상태·hostname이 표시되고, 2회 실행의 microvmId가 서로 다름
+
+도전 과제 방향
+라이프사이클 훅: hooks의 microvmImageHooks에서 ready와 validate를 ENABLED로 켜고, 샌드박스 서버에 두 경로를 추가합니다. /validate에서 모의 pytest를 한 번 돌리면 Lambda가 그 구간의 스냅샷을 프리페치해 시작이 빨라집니다
+VPC egress 통제: create_network_connector로 VpcEgressConfiguration(서브넷·보안 그룹·AssociatedComputeResourceTypes: ["MicroVm"]) 커넥터를 만들고, run_microvm의 egressNetworkConnectors에 ARN을 넣습니다. 보안 그룹 아웃바운드 규칙이 그대로 적용됩니다
+suspend/resume 활용: 테스트마다 종료하는 대신 suspend_microvm으로 멈추고 다음 요청에 resume_microvm합니다. pip install 캐시가 유지되는지 비교하면 스냅샷 재개의 이득이 보입니다 - 단, 커넥터는 실행 시점에 고정되어 재개 시 바꿀 수 없습니다
+핵심 포인트
+MicroVM은 Firecracker 전용 커널에서 실행되므로 호스트와 완전히 격리됩니다 - 컨테이너보다 강력한 보안 경계를 제공합니다
+이미지는 Dockerfile을 API에 붙여 넣는 방식이 아니라 zip 아티팩트를 S3로 넘기는 방식입니다 - 빌드는 Lambda가 수행하고 결과는 스냅샷으로 남습니다
+접속은 전용 HTTPS 엔드포인트 + X-aws-proxy-auth 토큰 조합입니다 - 토큰이 MicroVM·포트·만료 시각에 묶여 있어 최소 권한 접근이 됩니다
+종료하면 메모리와 디스크 상태가 함께 사라지므로 이전 실행의 민감 데이터가 다음 실행에 노출될 위험이 없습니다
+아웃바운드는 기본적으로 퍼블릭 인터넷이 열려 있습니다 - 통제가 필요하면 VPC egress 네트워크 커넥터를 붙이고 보안 그룹으로 좁힙니다

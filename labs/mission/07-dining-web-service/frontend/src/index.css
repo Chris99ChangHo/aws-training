@@ -1,0 +1,41 @@
+body {
+  margin: 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* AI 응답 마크다운 렌더링. Cloudscape 다크모드는 CSS 변수로 색상을
+   자동 전환하므로 명시적 색상 지정 없이 상속시켜 대비를 유지한다. */
+.markdown-body {
+  line-height: 1.6;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  margin: 12px 0 6px;
+  font-size: 1.05rem;
+}
+
+.markdown-body p {
+  margin: 6px 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.markdown-body li {
+  margin: 2px 0;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+}
+

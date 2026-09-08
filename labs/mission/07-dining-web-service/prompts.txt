@@ -1,0 +1,1057 @@
+시리즈 7: 다이닝 웹 서비스
+시리즈 개요
+지금까지 다이닝 에이전트는 AWS 자격 증명이 있어야만 호출할 수 있었습니다. 이 시리즈에서는 그 에이전트를 누구나 브라우저로 쓰는 웹 서비스로 만듭니다. SAM으로 서버리스 API를 세우고, AWS 공식 디자인 시스템 Cloudscape의 생성형 AI 채팅 컴포넌트로 프론트엔드를 만들고, S3+CloudFront로 공개한 뒤, 마지막에는 에이전트·API·프론트 3계층을 한 모노레포에 담아 git push 한 번으로 전부 배포되는 풀스택 파이프라인으로 완성합니다.
+
+아키텍처
+아키텍처
+POST /ask
+git push
+사용자
+CloudFront — S3 정적프론트
+HTTP API + Lambda
+AgentCore Runtime —DiningConcierge
+개발자
+CodeCommit 모노레포
+CodePipeline —에이전트·API·프론트 순차배포
+시작 조건
+AWS 계정 (Bedrock + AgentCore + Lambda/API Gateway + S3/CloudFront + CodePipeline/CodeBuild 접근 권한)
+AgentCore Runtime에 배포된 DiningConcierge — 첫 미션의 선행 미션 목록에 있는 미션 중 하나로 배포한 것. Managed Harness만 배포했다면 Runtime으로도 한 번 배포해 두세요 — 이 시리즈는 전 구간 Runtime 호출(invoke_agent_runtime) 전제입니다
+AWS SAM CLI 설치 + 로컬 Python 3.13(sam build가 함수 런타임과 같은 버전의 로컬 인터프리터를 요구), Node.js 20 이상(LTS 22 권장 — 「AgentCore CLI 설치」 실습에서 설치한 것 재사용)
+마지막 미션은 git + git-remote-codecommit(pip install git-remote-codecommit) 설치 전제
+미션은 순서대로 이어집니다 — 각 미션이 앞 미션의 산출물 위에 쌓입니다
+리전: us-west-2
+
+SAM 서버리스 API
+중급
+AgentCore Runtime의 다이닝 에이전트를 SAM 서버리스 웹 API로 노출해 브라우저에서 쓸 수 있게 만듭니다.
+
+미션 브리핑
+선행 미션에서 AgentCore Runtime에 배포한 DiningConcierge는 지금까지 AWS 자격 증명이 있어야만 호출할 수 있었습니다. 이 미션에서는 이 에이전트를 누구나 브라우저로 쓸 수 있는 웹 API로 노출합니다. AWS SAM으로 HTTP API와 Lambda 함수를 만들어 — POST /ask가 에이전트를 호출하고, GET /가 임시 확인용 채팅 페이지를 돌려주는 — 서버리스 API dining-web을 배포합니다.
+
+선행 조건
+선행 미션에서 AgentCore Runtime에 배포한 DiningConcierge (READY 상태)
+
+목표
+SAM 프로젝트 dining-web 구성 — 명시적 HTTP API·python3.13 Lambda·InvokeAgentRuntime 최소 권한
+Lambda 핸들러가 GET / (임시 확인용 채팅 페이지)와 POST /ask (DiningConcierge 호출) 두 라우트 처리
+배포 후 브라우저 채팅 폼 응답에 트라토리아 벨라 포함
+제약 조건
+SAM 앱/스택 이름은 dining-web, 디렉터리는 labs/dining-web/
+Lambda 런타임: python3.13, 함수 1개가 두 라우트 처리
+HTTP API는 명시적 AWS::Serverless::HttpApi 리소스로 선언 — CORS는 이번 미션에서 설정하지 않음
+에이전트 재배포 없음 — 선행 미션의 AgentCore Runtime 배포본 사용
+리전: us-west-2
+
+힌트
+핵심 패턴
+
+python
+
+# api/app.py — routeKey로 두 라우트 분기
+route = event.get("routeKey", "")
+if route == "GET /":
+    return {"statusCode": 200, "headers": {"Content-Type": "text/html"}, "body": html}
+if route == "POST /ask":
+    body = json.loads(event.get("body") or "{}")
+    ...
+전체 코드는 솔루션의 「직접 코드」 탭에 있습니다.
+
+트러블슈팅
+
+statusCode
+없이 HTML 반환하면 JSON 문자열로 표시 →
+statusCode
+·
+headers
+·
+body
+dict 필수
+AccessDenied
+:
+Resource
+에 런타임 ARN과
+!Sub "${AgentRuntimeArn}/*"
+둘 다 필요
+Lambda 타임아웃:
+Globals.Function.Timeout: 60
+선언 필수 (기본 3초로는 에이전트 응답 대기 불가)
+Lambda 내장 boto3 버전 부족 →
+requirements.txt
+에
+boto3
+명시
+
+1
+환경 확인
+SAM CLI, Python, Node.js, AWS CLI, 자격 증명을 확인합니다.
+
+bash
+
+python3 --version
+node --version
+sam --version
+aws --version
+aws sts get-caller-identity --region us-west-2
+확인
+모든 도구 버전 출력 정상
+AWS 계정 ID 표시
+2
+SAM 프로젝트 생성
+labs/dining-web/ 디렉터리에 SAM 프로젝트 뼈대와 template.yaml을 만듭니다.
+
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+bash
+
+mkdir -p /workshop/labs/dining-web/api && cd /workshop/labs/dining-web
+yaml · template.yaml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: dining-web — 다이닝 에이전트 서버리스 웹 API
+
+Parameters:
+  AgentRuntimeArn:
+    Type: String
+    Description: 배포된 다이닝 에이전트의 AgentCore Runtime ARN
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 256
+
+Resources:
+  # 명시적 HTTP API 리소스 — 후속 미션에서 CorsConfiguration을 여기에 추가합니다
+  DiningHttpApi:
+    Type: AWS::Serverless::HttpApi
+
+  DiningFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Environment:
+        Variables:
+          AGENT_RUNTIME_ARN: !Ref AgentRuntimeArn
+      Policies:
+        - Statement:
+            - Sid: InvokeDiningAgent
+              Effect: Allow
+              Action: bedrock-agentcore:InvokeAgentRuntime
+              Resource:
+                - !Ref AgentRuntimeArn        # 런타임 자체
+                - !Sub "${AgentRuntimeArn}/*" # 런타임의 엔드포인트 (DEFAULT 포함)
+      Events:
+        Home:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DiningHttpApi
+            Path: /
+            Method: GET
+        Ask:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DiningHttpApi
+            Path: /ask
+            Method: POST
+
+Outputs:
+  ApiUrl:
+    Description: HTTP API 엔드포인트
+    Value: !Sub "https://${DiningHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+text · api/requirements.txt
+
+boto3
+bash
+
+sam validate
+확인
+template.yaml에 명시적 AWS::Serverless::HttpApi 리소스 선언
+sam validate 통과
+3
+Lambda 핸들러 작성
+api/app.py 핸들러가 두 라우트를 처리하도록 구현합니다.
+
+python · api/app.py
+
+"""dining-web API — GET /는 임시 HTML 페이지, POST /ask는 AgentCore Runtime 프록시."""
+import json
+import os
+
+import boto3
+
+agent_core = boto3.client("bedrock-agentcore")
+AGENT_RUNTIME_ARN = os.environ["AGENT_RUNTIME_ARN"]
+
+HTML = """<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>강남 다이닝 API</title>
+  <style>
+    body { font-family: sans-serif; max-width: 640px; margin: 80px auto; color: #232f3e; }
+    #answer { margin-top: 16px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>강남 다이닝</h1>
+  <input id="q" type="text" style="width:80%" placeholder="식당을 물어보세요">
+  <button onclick="ask()">전송</button>
+  
+
+<div id="answer"></div>
+
+  <script>
+    async function ask() {
+      const prompt = document.getElementById('q').value;
+      document.getElementById('answer').textContent = '답변 생성 중...';
+      const res = await fetch('/ask', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prompt})
+      });
+      const data = await res.json();
+      document.getElementById('answer').textContent = data.answer;
+    }
+  </script>
+</body>
+</html>"""
+
+def _extract_answer(response) -> str:
+    """invoke_agent_runtime 응답 본문에서 텍스트를 추출합니다."""
+    raw = response["response"].read().decode("utf-8")
+    if "text/event-stream" in response.get("contentType", ""):
+        chunks = []
+        for line in raw.splitlines():
+            if line.startswith("data:"):
+                chunk = line[len("data:"):].strip()
+                try:
+                    chunk = json.loads(chunk)
+                except json.JSONDecodeError:
+                    pass
+                if isinstance(chunk, str):
+                    chunks.append(chunk)
+        return "".join(chunks)
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, str) else raw
+    except json.JSONDecodeError:
+        return raw
+
+def lambda_handler(event, context):
+    route = event.get("routeKey", "")
+
+    if route == "GET /":
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "text/html; charset=utf-8"},
+            "body": HTML,
+        }
+
+    if route == "POST /ask":
+        body = json.loads(event.get("body") or "{}")
+        prompt = body.get("prompt", "").strip()
+        if not prompt:
+            return {
+                "statusCode": 400,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"error": "prompt가 비어 있습니다."}, ensure_ascii=False),
+            }
+        response = agent_core.invoke_agent_runtime(
+            agentRuntimeArn=AGENT_RUNTIME_ARN,
+            qualifier="DEFAULT",
+            payload=json.dumps({"prompt": prompt}),
+        )
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"answer": _extract_answer(response)}, ensure_ascii=False),
+        }
+
+    return {
+        "statusCode": 404,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({"error": f"지원하지 않는 경로입니다: {route}"}, ensure_ascii=False),
+    }
+확인
+GET /가 채팅 폼 HTML을 statusCode dict로 반환
+POST /ask가 {"prompt": "..."} → {"answer": "..."} 계약으로 응답
+4
+배포와 확인
+SAM으로 배포하고 브라우저에서 에이전트 응답을 확인합니다.
+
+
+👨‍💻 직접 실행
+
+🖥️ 콘솔
+bash
+
+# 에이전트 Runtime ARN 조회
+AGENT_RUNTIME_ARN=$(aws bedrock-agentcore-control list-agent-runtimes --region us-west-2 \
+  --query "agentRuntimes[?agentRuntimeName=='DiningConcierge'].agentRuntimeArn | [0]" --output text)
+echo "AGENT_RUNTIME_ARN=$AGENT_RUNTIME_ARN"
+
+# 빌드
+cd /workshop/labs/dining-web
+sam build
+
+# 최초 배포 (스택 이름, 리전, ARN 파라미터 입력)
+sam deploy --guided
+
+# 재배포는 이후부터 sam build && sam deploy 만으로
+bash
+
+# 배포 후 API URL 조회 및 curl 확인
+API_URL=$(aws cloudformation describe-stacks --stack-name dining-web \
+  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue | [0]" --output text)
+echo "$API_URL"
+
+curl -s -X POST "$API_URL/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "강남역 근처 이탈리안 식당 추천해 주세요"}'
+확인
+dining-web 스택 배포 완료, Outputs에 ApiUrl 표시
+브라우저 채팅 폼 응답에 트라토리아 벨라 포함
+
+도전 과제 방향
+저장 즉시 반영: sam sync --watch는 코드 저장 시 Lambda 코드를 직접 업데이트합니다 — sam build && sam deploy 없이 개발 루프를 단축합니다.
+대화 이어가기: /ask 요청에 sessionId 필드를 추가하고 Lambda에서 invoke_agent_runtime의 runtimeSessionId로 전달하면 이전 턴을 기억합니다 (33자 이상 필요).
+정리 리허설: sam delete는 스택과 배포 아티팩트를 함께 삭제합니다 — samconfig.toml만 남아 있으면 sam build && sam deploy로 동일 스택을 재구축할 수 있습니다.
+핵심 포인트
+브라우저는 SigV4가 필요한 invoke_agent_runtime을 직접 호출할 수 없습니다 — Lambda 프록시(HTTP API + Lambda)가 웹과 Runtime 사이의 경계입니다.
+HTTP API payload 2.0에서 statusCode 없는 반환값은 통째로 JSON 본문으로 추론됩니다 — HTML은 statusCode·headers·body를 갖춘 dict가 필수입니다.
+InvokeAgentRuntime의 IAM Resource는 런타임 ARN과 !Sub "${AgentRuntimeArn}/*" 둘 다 필요합니다 — 런타임만 넣으면 AccessDenied입니다.
+Lambda 내장 boto3에 기대지 않습니다 — requirements.txt에 boto3를 명시해야 bedrock-agentcore 클라이언트가 보장됩니다.
+HTTP API를 명시적 리소스로 선언한 이유는 확장 자리 때문입니다 — 암묵 생성 API로는 후속 미션에서 CORS 속성을 붙일 자리가 없습니다.
+
+Cloudscape 채팅 프론트엔드
+중급
+dining-web API의 임시 채팅 페이지를 Cloudscape 생성형 AI 채팅 컴포넌트로 만든 진짜 프론트엔드로 교체합니다.
+
+미션 브리핑
+선행 미션에서 배포한 dining-web은 Lambda가 돌려주는 임시 채팅 페이지로 동작을 확인했습니다. 이번 미션에서는 그 임시 페이지를 진짜 프론트엔드로 교체합니다 — AWS 공식 디자인 시스템 Cloudscape의 생성형 AI 채팅 컴포넌트로 채팅 UI를 만들고, 로컬 dev 서버에서 dining-web API(POST /ask)와 실제로 대화합니다. 그 과정에서 브라우저가 다른 출처의 API 호출을 차단하는 CORS를 만나고, API 쪽을 열어 해결합니다.
+
+선행 조건
+선행 미션에서 배포한 dining-web 스택 (API URL 필요)
+
+목표
+Vite+React 프로젝트 labs/dining-web/frontend/ 구성 — Cloudscape 패키지 3개 설치와 전역 스타일이 적용된 기본 레이아웃
+채팅 UI 완성 — ChatBubble 대화 목록·PromptInput 입력·로딩 표시, .env.local의 VITE_API_URL로 POST /ask 연결
+CORS 개방과 실대화 확인 — dining-web 스택에 로컬 dev 서버 출처 허용을 추가해 재배포하고, 질문 응답에 트라토리아 벨라 확인
+제약 조건
+선행 미션 완료가 전제 — 배포된 dining-web 스택과 그 API URL을 그대로 사용(백엔드 재작성 없음)
+Node.js 20 이상(LTS 22 권장)
+프론트엔드 디렉터리는 labs/dining-web/frontend/ — 이번 미션은 로컬 dev 서버까지
+리전: us-west-2
+
+힌트
+핵심 패턴
+
+jsx
+
+// ChatBubble·Avatar — @cloudscape-design/chat-components 소속
+import ChatBubble from "@cloudscape-design/chat-components/chat-bubble";
+import Avatar from "@cloudscape-design/chat-components/avatar";
+// PromptInput — @cloudscape-design/components 소속 (chat-components 아님)
+import PromptInput from "@cloudscape-design/components/prompt-input";
+jsx
+
+// avatar와 ariaLabel은 ChatBubble 필수 prop
+<ChatBubble type="incoming" ariaLabel="AI 응답"
+  avatar={<Avatar color="gen-ai" iconName="gen-ai" ariaLabel="AI" loading={waiting} />}
+>{msg.text}</ChatBubble>
+Globals.HttpApi
+는
+CorsConfiguration
+을 지원하지 않습니다 — 반드시 명시적
+AWS::Serverless::HttpApi
+리소스에 붙여야 합니다
+Content-Type
+헤더를 담은 fetch는 preflight를 발생시킵니다 —
+AllowHeaders
+에
+Content-Type
+필수
+전체 코드는 솔루션의 「직접 코드」 탭에 있습니다.
+
+트러블슈팅
+
+Cloudscape 스타일 미적용 →
+main.jsx
+에
+import '@cloudscape-design/global-styles/index.css';
+누락 확인
+PromptInput을 chat-components에서 import →
+@cloudscape-design/components/prompt-input
+으로 수정
+CORS 재배포 후에도 차단 →
+Globals.HttpApi
+가 아닌 명시적 리소스에 붙었는지 확인
+
+1
+환경 확인
+bash
+
+node --version
+npm --version
+aws --version
+aws sts get-caller-identity --region us-west-2
+확인
+node, npm, aws 버전 출력 정상
+aws sts get-caller-identity 응답에 계정 ID 표시
+2
+Vite 스캐폴드와 Cloudscape 설치
+bash
+
+cd /workshop/labs/dining-web
+npm create vite@latest frontend -- --template react
+cd frontend && npm install
+npm install @cloudscape-design/components @cloudscape-design/chat-components @cloudscape-design/global-styles
+jsx
+
+// src/main.jsx
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import '@cloudscape-design/global-styles/index.css';
+import App from './App.jsx';
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+jsx
+
+// src/App.jsx — 기본 레이아웃
+import Container from '@cloudscape-design/components/container';
+import Header from '@cloudscape-design/components/header';
+
+export default function App() {
+  return (
+    
+
+<div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
+      <Container
+        header={
+          <Header variant="h1" description="AgentCore Runtime의 다이닝 에이전트와 대화합니다">
+            강남 다이닝
+          </Header>
+        }
+      >
+        <p>채팅 영역 자리</p>
+      </Container>
+    </div>
+
+  );
+}
+확인
+npm run dev로 연 페이지에 Cloudscape 스타일이 적용된 기본 레이아웃 렌더
+3
+채팅 UI
+jsx
+
+// src/App.jsx — 채팅 UI
+import { useState } from 'react';
+import Container from '@cloudscape-design/components/container';
+import Header from '@cloudscape-design/components/header';
+import SpaceBetween from '@cloudscape-design/components/space-between';
+import PromptInput from '@cloudscape-design/components/prompt-input';
+import ChatBubble from '@cloudscape-design/chat-components/chat-bubble';
+import Avatar from '@cloudscape-design/chat-components/avatar';
+
+const API_URL = import.meta.env.VITE_API_URL;
+
+export default function App() {
+  const [messages, setMessages] = useState([]);
+  const [value, setValue] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const send = async () => {
+    const prompt = value.trim();
+    if (!prompt || loading) return;
+    setValue('');
+    setMessages((prev) => [...prev, { role: 'user', text: prompt }]);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      setMessages((prev) => [...prev, { role: 'ai', text: data.answer }]);
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'ai', text: `오류가 발생했습니다: ${err.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    
+
+<div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
+      <Container
+        header={
+          <Header variant="h1" description="AgentCore Runtime의 다이닝 에이전트와 대화합니다">
+            강남 다이닝
+          </Header>
+        }
+      >
+        <SpaceBetween size="m">
+          {messages.map((m, i) =>
+            m.role === 'user' ? (
+              <ChatBubble
+                key={i}
+                type="outgoing"
+                ariaLabel={`사용자 메시지 ${i + 1}`}
+                avatar={<Avatar ariaLabel="사용자" tooltipText="사용자" />}
+              >
+                {m.text}
+              </ChatBubble>
+            ) : (
+              <ChatBubble
+                key={i}
+                type="incoming"
+                ariaLabel={`에이전트 응답 ${i + 1}`}
+                avatar={<Avatar color="gen-ai" iconName="gen-ai" ariaLabel="다이닝 에이전트" tooltipText="다이닝 에이전트" />}
+              >
+                {m.text}
+              </ChatBubble>
+            )
+          )}
+          {loading && (
+            <ChatBubble
+              type="incoming"
+              showLoadingBar
+              ariaLabel="에이전트 응답 생성 중"
+              avatar={<Avatar loading={true} color="gen-ai" iconName="gen-ai" ariaLabel="다이닝 에이전트" />}
+            >
+              답변을 생성하는 중입니다…
+            </ChatBubble>
+          )}
+          <PromptInput
+            value={value}
+            onChange={({ detail }) => setValue(detail.value)}
+            onAction={send}
+            actionButtonIconName="send"
+            placeholder="식당을 물어보세요"
+            i18nStrings={{ actionButtonAriaLabel: '메시지 전송' }}
+          />
+        </SpaceBetween>
+      </Container>
+    </div>
+
+  );
+}
+text
+
+# .env.local (frontend/ 루트에 생성 — 커밋 금지)
+VITE_API_URL=<YOUR_API_URL>
+확인
+질문 전송 시 사용자 버블 즉시 추가, 로딩 표시 후 응답 버블 렌더
+4
+CORS 개방과 실대화 확인
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+yaml
+
+# labs/dining-web/template.yaml — DiningHttpApi 리소스 수정
+  DiningHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - http://localhost:5173
+        AllowMethods:
+          - GET
+          - POST
+        AllowHeaders:
+          - Content-Type
+bash
+
+# 재배포 (Globals가 아닌 명시적 리소스에 CorsConfiguration을 붙인 뒤)
+cd /workshop/labs/dining-web
+sam build && sam deploy
+확인
+트라토리아 벨라가 포함된 응답이 AI 버블로 렌더
+
+도전 과제 방향
+추천 질문 칩: SupportPromptGroup이 대화 시작 전 추천 질문을 표시합니다 — onItemClick을 send 함수에 연결하면 클릭으로 바로 전송됩니다.
+다크 모드: @cloudscape-design/global-styles의 applyMode(Mode.Dark)로 Cloudscape 테마 전체가 전환됩니다 — 헤더에 토글 버튼을 추가합니다.
+대화 이어가기: 브라우저에서 세션 ID(33자 이상)를 만들어 /ask 요청에 담고, Lambda가 invoke_agent_runtime의 runtimeSessionId로 넘기도록 바꿉니다.
+핵심 포인트
+컴포넌트 소속이 둘로 갈립니다 — ChatBubble·Avatar·LoadingBar·SupportPromptGroup은 @cloudscape-design/chat-components, PromptInput은 @cloudscape-design/components/prompt-input입니다
+CorsConfiguration은 명시적 AWS::Serverless::HttpApi 리소스에만 붙습니다 — Globals의 HttpApi는 이 속성을 지원하지 않습니다
+CORS 오류는 브라우저에서 먼저 눈으로 확인하고 고치는 흐름을 권합니다 — 개발자 도구 콘솔의 차단 메시지가 어떤 출처·헤더를 허용해야 하는지 그대로 알려줍니다
+fetch가 JSON 본문을 보내면 Content-Type 헤더 때문에 사전 요청(preflight)이 발생합니다 — AllowHeaders에 Content-Type이 빠지면 본 요청 전에 차단됩니다
+Vite는 VITE_ 접두 변수만 클라이언트 코드에 노출합니다 — API URL은 .env.local(커밋 제외)에 두고 import.meta.env.VITE_API_URL로 읽습니다
+이번 미션은 로컬 dev 서버까지입니다 — 빌드 산출물을 인터넷에 올리는 일은 후속 미션에서 이어집니다
+
+CloudFront 정적 호스팅
+중급
+Cloudscape 채팅 앱의 빌드 산출물을 S3와 CloudFront로 공개해, 누구나 URL로 접속하는 서비스로 만듭니다.
+
+미션 브리핑
+선행 미션에서 완성한 채팅 앱은 아직 로컬 dev 서버에서만 돌아갑니다. 이번 미션에서는 빌드 산출물을 Amazon S3에 올리고 Amazon CloudFront로 서빙해, 누구나 URL로 접속할 수 있는 서비스로 만듭니다. 공개 호스팅이지만 버킷은 끝까지 비공개입니다 — CloudFront만 OAC(Origin Access Control)로 접근합니다. 마지막에는 새 출처에 CORS를 열어 실대화를 확인하고, 코드 수정이 사용자에게 닿기까지의 갱신 루프(빌드→업로드→캐시 무효화)를 체험합니다.
+
+선행 조건
+선행 미션에서 완성한 frontend/ 채팅 앱 (빌드 가능한 상태)
+배포된 dining-web API (SAM 스택)
+
+목표
+프로덕션 빌드와 S3 업로드 — .env.production의 VITE_API_URL로 빌드한 dist/를 버킷 dining-web-<YOUR_ACCOUNT_ID>에 업로드 (퍼블릭 액세스 차단 유지)
+CloudFront 배포 완성 — S3 오리진에 OAC 연결·기본 루트 객체 index.html·버킷 정책 적용, CloudFront URL에서 채팅 페이지 렌더
+CORS 갱신과 갱신 루프 — CloudFront 출처 허용 후 트라토리아 벨라가 포함된 응답 확인, 수정→빌드→업로드→무효화 1회 체험
+제약 조건
+선행 미션 완료가 전제 — frontend/ 프로젝트가 빌드 가능하고, 배포된 dining-web API를 그대로 사용
+S3 버킷 이름은 dining-web-<YOUR_ACCOUNT_ID> — 퍼블릭 액세스 차단은 그대로 유지 (CloudFront OAC로만 접근)
+정적 자산은 CloudFront로만 서빙 — S3 정적 웹 사이트 호스팅 기능은 사용하지 않음
+리전: us-west-2
+
+힌트
+핵심 패턴
+
+bash
+
+# 빌드 → 업로드
+npm run build
+aws s3 sync dist/ s3://dining-web-"<YOUR_ACCOUNT_ID>"/
+# 캐시 무효화
+aws cloudfront create-invalidation --distribution-id "<YOUR_DISTRIBUTION_ID>" --paths "/*"
+전체 절차는 솔루션의 「직접 실행」·「콘솔」 탭에 있습니다.
+
+트러블슈팅
+
+CloudFront URL에서 403 / XML 오류 페이지 → 버킷 정책과 Default root object 재확인
+질문 응답 없음 → CORS AllowOrigins에 CloudFront 도메인 추가 후
+sam deploy
+재배포 필요
+수정 후 새로고침해도 옛 화면 → 무효화(
+create-invalidation
+) 필요
+
+1
+환경 확인
+시작 전에 도구와 자격 증명을 확인합니다.
+
+bash
+
+aws --version
+sam --version
+node --version && npm --version
+git --version
+aws sts get-caller-identity --region us-west-2
+확인
+모든 도구 버전 출력 정상
+aws sts 응답에 Account ID 표시
+2
+빌드와 업로드
+프로덕션 빌드를 만들고 S3 버킷에 업로드합니다.
+
+
+👨‍💻 직접 실행
+
+🖥️ 콘솔
+bash
+
+# 1. 프로덕션 환경 파일 작성
+cd /workshop/labs/dining-web/frontend
+cat > .env.production <<'EOF'
+VITE_API_URL="<YOUR_API_URL>"
+EOF
+
+# 2. 프로덕션 빌드
+npm run build
+
+# 3. 버킷 생성 (퍼블릭 액세스 차단 기본값 유지)
+aws s3api create-bucket \
+  --bucket "dining-web-<YOUR_ACCOUNT_ID>" \
+  --region us-west-2 \
+  --create-bucket-configuration LocationConstraint=us-west-2
+
+# 4. 빌드 산출물 업로드
+aws s3 sync dist/ s3://dining-web-"<YOUR_ACCOUNT_ID>"/
+확인
+S3 버킷에 index.html과 assets/ 업로드 확인
+버킷 퍼블릭 액세스 차단(Block all public access) 켜진 상태 유지
+3
+CloudFront 배포
+S3 오리진에 OAC를 적용한 CloudFront 배포를 만듭니다.
+
+CloudFront 콘솔 > Create distribution 클릭
+Distribution name: dining-web, 유형: Single website or app 선택
+Origin type: Amazon S3 → dining-web-<YOUR_ACCOUNT_ID> 버킷 선택
+Use recommended origin settings 유지 (OAC 자동 구성)
+WAF: 활성화하지 않음 (비용 발생)
+Create distribution 클릭
+생성 후 배포 General > Settings 편집 → Default root object: index.html 저장
+배포 완료 후 Distribution domain name(https://<d…>.cloudfront.net) 브라우저로 확인
+확인
+CloudFront URL에서 채팅 페이지 렌더 확인
+버킷 정책에 AWS:SourceArn Condition 포함
+4
+CORS와 갱신 루프
+새 출처에 API를 열고 갱신 루프를 체험합니다.
+
+bash
+
+# 1. CORS 갱신 후 재배포 (template.yaml 수정은 아래 참고)
+cd /workshop/labs/dining-web
+sam build && sam deploy
+
+# 2. 갱신 루프 — 수정 → 빌드 → 업로드 → 무효화
+cd frontend
+npm run build
+aws s3 sync dist/ s3://dining-web-"<YOUR_ACCOUNT_ID>"/ --delete
+
+# 3. 무효화 전 새로고침으로 캐시 확인 (옛 파일 그대로)
+# 4. 무효화 실행
+aws cloudfront create-invalidation \
+  --distribution-id "<YOUR_DISTRIBUTION_ID>" \
+  --paths "/*"
+template.yaml 수정 (DiningHttpApi 블록):
+
+yaml
+
+DiningHttpApi:
+  Type: AWS::Serverless::HttpApi
+  Properties:
+    CorsConfiguration:
+      AllowOrigins:
+        - http://localhost:5173
+        - https://<YOUR_DISTRIBUTION_DOMAIN>
+      AllowMethods:
+        - GET
+        - POST
+      AllowHeaders:
+        - Content-Type
+확인
+CloudFront URL에서 트라토리아 벨라가 포함된 응답 확인
+무효화 후 수정 내용이 CloudFront URL에 반영
+
+도전 과제 방향
+SPA 라우팅 대비: CloudFront 배포의 커스텀 오류 응답에 403과 404를 응답 페이지 /index.html + HTTP 200으로 매핑합니다 — 비공개 S3 오리진은 없는 경로에 404 대신 403을 돌려주는 경우가 많아 둘 다 매핑하는 것이 안전합니다.
+압축·캐시 정책 확인: 배포 동작(Behavior)에서 캐시 정책 CachingOptimized와 압축 설정을 확인하고, 브라우저 개발자 도구 Network 탭에서 응답 헤더의 content-encoding(br·gzip)으로 실제 적용을 확인합니다.
+배포 스크립트: 단계 4의 갱신 루프 세 명령(npm run build → aws s3 sync dist/ … --delete → aws cloudfront create-invalidation)을 deploy-web.sh 하나로 묶습니다 — 무효화가 끝나기 전의 새로고침은 옛 파일이 보이는 게 정상이므로, 스크립트가 무효화 ID를 출력하게 해 두면 반영 확인이 쉽습니다.
+핵심 포인트
+공개 호스팅이지만 버킷은 끝까지 비공개입니다 — OAC가 CloudFront의 오리진 요청에 서명하고, 버킷 정책의 AWS:SourceArn Condition이 지정한 배포만 허용합니다
+콘솔 생성 위저드에서 "Use recommended origin settings"가 OAC를 자동 구성하고 버킷 정책까지 자동 갱신합니다 — OAI는 legacy 방식이라 신규 구성에 쓰지 않습니다
+Default root object는 루트(/) 요청에만 적용됩니다 — SPA 라우팅이 있으면 커스텀 오류 응답이 필요합니다
+CORS 허용 출처는 스킴을 포함한 정확한 문자열입니다 — https://<YOUR_DISTRIBUTION_DOMAIN> (끝 슬래시 없음)
+VITE_ 변수 값은 빌드 시점에 코드에 박힙니다 — API URL이 바뀌면 .env.production 수정 후 재빌드·재업로드가 필요합니다
+무효화 없이 새로고침하면 캐시된 옛 파일이 나옵니다 — /*도 경로 1개로 계산되며 월 1,000 경로까지 무료입니다
+
+풀스택 파이프라인
+고급
+에이전트·API·프론트엔드를 한 모노레포에 담고, git push 한 번으로 3계층이 순서대로 자동 배포되는 풀스택 파이프라인을 완성합니다.
+
+미션 브리핑
+지금까지 다이닝 웹 서비스의 3계층은 전부 손으로 배포했습니다 — 에이전트는 agentcore deploy, API는 sam deploy, 프론트엔드는 s3 sync와 캐시 무효화. 이 시리즈의 마지막 미션에서는 셋을 한 모노레포에 담아 CodeCommit에 올리고, git push 한 번이 에이전트 → API → 프론트엔드를 순서대로 자동 배포하는 풀스택 파이프라인으로 완성합니다. 이제부터 릴리스는 커밋이고, 배포는 파이프라인의 일입니다.
+
+에이전트·API·프론트엔드를 한 모노레포로 조립해 CodeCommit 리포지토리 dining-web에 push하세요
+git push가 트리거하는 dining-web-pipeline으로 3계층이 순서대로 자동 배포되게 하세요
+프론트 문구와 에이전트 프롬프트를 한 커밋으로 수정해, push만으로 양쪽에 반영되는 것까지 실증하세요
+선행 조건
+선행 미션들에서 배포한 DiningConcierge (READY 상태), SAM 스택 dining-web, frontend/ Vite 앱이 모두 준비된 상태
+로컬에 git과 git-remote-codecommit 설치 (pip install git-remote-codecommit)
+
+목표
+모노레포 dining-web — DiningConcierge/·api/·template.yaml·frontend/·buildspec 3종을 CodeCommit main에 push
+dining-web-pipeline — push로 자동 시작, Deploy 스테이지의 3액션이 agent → api → frontend 순서로 전부 Succeeded
+풀스택 실증 — 한 커밋 push 후 손 배포 없이 CloudFront 새 문구와 에이전트 새 인사말 동시 확인
+제약 조건
+선행 미션 완료가 전제 — dining-web의 3계층(에이전트·API·프론트엔드)이 전부 배포된 상태에서 시작
+파이프라인 실행은 git push 트리거만 사용 — 수동 실행(Release change)으로 때우지 않기
+각 CodeBuild 롤 권한은 그 계층 배포에 필요한 서비스로 한정 — 광역 관리자 정책 금지
+리전: us-west-2
+
+힌트
+핵심 패턴
+
+yaml
+
+# buildspec 핵심 — 계층별로 배포 명령만 다릅니다
+#  agent(install: nodejs 20 + @aws/agentcore, uv):
+      - cd DiningConcierge && agentcore deploy -y
+#  api(install: python 3.13):
+      - sam build && sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+전체 코드는 솔루션의 「직접 코드」 탭에 있습니다.
+
+트러블슈팅
+
+에이전트 배포 실패(
+No such file or directory
+) →
+DiningConcierge/.git
+제거 확인 (
+rm -rf DiningConcierge/.git
+)
+push 후 파이프라인 미시작 → 콘솔 위저드로 만든 파이프라인에 EventBridge 규칙 자동 생성됨 — CodePipeline 설정에서 규칙 확인
+CodeBuild AccessDenied → 해당 계층의 롤 정책 확인 (에이전트:
+sts:AssumeRole
+cdk-* 롤, API:
+iam:PassRole
+, 프론트: 버킷·CloudFront 권한)
+--no-confirm-changeset
+누락 시 sam deploy가 확인 대기로 멈춤
+
+1
+환경 확인
+bash
+
+aws --version
+sam --version
+agentcore --version   # 없으면: npm install -g @aws/agentcore
+git --version
+pip install git-remote-codecommit
+aws sts get-caller-identity --region us-west-2
+확인
+모든 도구 버전 출력 정상
+aws sts 응답에 Account ID 표시
+2
+모노레포 조립과 push
+dining-web 서비스의 3계층을 한 모노레포로 조립해 CodeCommit에 올립니다.
+
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+bash
+
+# 1. CodeCommit 리포지토리 생성
+aws codecommit create-repository --repository-name dining-web \
+  --repository-description "Dining web service full-stack monorepo"
+
+# 2. 모노레포 조립
+cd /workshop/labs/dining-web
+cp -R /workshop/labs/agentcore-setup/DiningConcierge ./DiningConcierge
+rm -rf DiningConcierge/.git   # 임베디드 리포 제거 필수
+
+# 3. .gitignore 작성
+cat > .gitignore <<'EOF'
+.aws-sam/
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+DiningConcierge/agentcore/.env.local
+DiningConcierge/agentcore/.cli/
+DiningConcierge/dining-agent-src.zip
+DiningConcierge/ops/
+EOF
+
+# 4. frontend/.env.production 작성 (VITE_API_URL은 커밋 대상)
+cat > frontend/.env.production <<'EOF'
+VITE_API_URL="<YOUR_API_URL>"
+EOF
+
+# 5. buildspec 3종 작성 후 (아래 탭 참고) 커밋 및 push
+git config --global user.name "Workshop User"
+git config --global user.email "user@example.com"
+git init -b main
+git remote add origin codecommit::us-west-2://dining-web
+git add .
+git commit -m "다이닝 웹 서비스 모노레포 — 에이전트·API·프론트 + buildspec 3종"
+git push -u origin main
+buildspec 3종:
+
+yaml · buildspec-agent.yml
+
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+      python: 3.12
+    commands:
+      - npm install -g @aws/agentcore
+      - pip install uv
+  build:
+    commands:
+      - cd DiningConcierge && agentcore deploy -y
+yaml · buildspec-api.yml
+
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.13
+  build:
+    commands:
+      - sam build
+      - sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+yaml · buildspec-web.yml
+
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  build:
+    commands:
+      - cd frontend && npm ci && npm run build
+      - aws s3 sync dist/ s3://dining-web-<YOUR_ACCOUNT_ID>/ --delete
+      - aws cloudfront create-invalidation --distribution-id <YOUR_DISTRIBUTION_ID> --paths "/*"
+확인
+CodeCommit 콘솔에서 dining-web 리포지토리 내 모노레포 구조 확인
+DiningConcierge/·api/·frontend/·buildspec 3종 모두 확인
+3
+파이프라인 조립과 첫 실행
+CodeBuild 프로젝트 3개와 파이프라인을 조립하고 첫 실행을 확인합니다.
+
+
+👨‍💻 직접 코드
+
+🖥️ 콘솔
+IAM 인라인 정책 — codebuild-dining-web-agent-service-role에 부여:
+
+json
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeCdkBootstrapRoles",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::*:role/cdk-*"
+    },
+    {
+      "Sid": "CdkCliDirectAccess",
+      "Effect": "Allow",
+      "Action": ["cloudformation:*", "ssm:GetParameter", "ssm:GetParameters", "tag:GetResources"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AgentCoreLifecycle",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ObservabilitySetup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeResourcePolicies",
+        "logs:PutResourcePolicy",
+        "application-signals:StartDiscovery",
+        "xray:GetTraceSegmentDestination",
+        "xray:UpdateTraceSegmentDestination"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PipelineArtifacts",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion", "s3:GetBucketVersioning", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::codepipeline-us-west-2-*"
+    }
+  ]
+}
+IAM 인라인 정책 — codebuild-dining-web-api-service-role에 부여:
+
+json
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SamDeployStack",
+      "Effect": "Allow",
+      "Action": ["cloudformation:*", "lambda:*", "apigateway:*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SamArtifactsBucket",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:CreateBucket", "s3:GetBucketLocation"],
+      "Resource": "arn:aws:s3:::aws-sam-cli-managed-default*"
+    },
+    {
+      "Sid": "FunctionRole",
+      "Effect": "Allow",
+      "Action": ["iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:TagRole", "iam:PassRole"],
+      "Resource": "arn:aws:iam::*:role/dining-web-*"
+    },
+    {
+      "Sid": "PipelineArtifacts",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion", "s3:GetBucketVersioning", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::codepipeline-us-west-2-*"
+    }
+  ]
+}
+IAM 인라인 정책 — codebuild-dining-web-frontend-service-role에 부여:
+
+json
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SyncStaticBucket",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": [
+        "arn:aws:s3:::dining-web-<YOUR_ACCOUNT_ID>",
+        "arn:aws:s3:::dining-web-<YOUR_ACCOUNT_ID>/*"
+      ]
+    },
+    {
+      "Sid": "Invalidation",
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PipelineArtifacts",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion", "s3:GetBucketVersioning", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::codepipeline-us-west-2-*"
+    }
+  ]
+}
+확인
+push로 dining-web-pipeline이 자동 시작됨
+Deploy 스테이지의 3액션(agent → api → frontend)이 전부 Succeeded
+4
+풀스택 실증
+한 커밋으로 풀스택 자동 배포를 실증합니다.
+
+bash
+
+# frontend 헤더 문구 수정 예시
+# frontend/src/App.jsx 또는 해당 컴포넌트에서 타이틀 문자열 변경
+
+# DiningConcierge 시스템 프롬프트에 인사 규칙 추가
+# DiningConcierge/app/DiningConcierge/main.py의 system_prompt 마지막에:
+#   "모든 응답의 끝에 '맛있는 식사 되세요!'라고 인사하세요." 추가
+
+# 한 커밋으로 push
+git add .
+git commit -m "프론트 헤더 문구 + 에이전트 인사말 규칙"
+git push
+확인
+CloudFront 페이지에서 새 문구 표시 확인
+채팅 응답에 트라토리아 벨라와 "맛있는 식사 되세요!" 포함 확인
+
+도전 과제 방향
+평가 게이트 이식: Deploy 앞에 Test 스테이지 추가 → Strands Evals buildspec을 별도 CodeBuild 프로젝트로 만들어 Test 스테이지에 배치. 평가 통과 판정은 빌드 종료 코드 0/1로 제어
+프론트 전용 빠른 경로: 아티팩트에는 .git이 없으므로 git diff로는 판정할 수 없습니다 — buildspec 첫머리에서 아티팩트 내 해당 계층 파일들의 체크섬을 계산해 S3에 보관한 지난 값과 비교하고, 같으면 exit 0으로 조기 성공. agentcore deploy는 2~3분이므로 프론트 단독 커밋 체감이 확연히 달라집니다
+수동 승인: Deploy 스테이지 앞에 Manual approval 액션 추가 → SNS 토픽 연결해 이메일 알림 → 승인 링크 클릭 후 배포 진행
+핵심 포인트
+콘솔에서 만든 CodeCommit 소스 파이프라인은 EventBridge 규칙이 자동 생성됩니다 — push가 곧 트리거이고, Release change는 리허설용입니다
+순차성의 실체는 RunOrder입니다 — 같은 스테이지의 3액션에 1·2·3을 주면 에이전트 배포가 실패했을 때 API·프론트 배포가 실행되지 않습니다
+이미지 aws/codebuild/amazonlinux-x86_64-standard:5.0에는 sam CLI·Node가 사전 설치되어 있지만, agentcore CLI(npm install -g @aws/agentcore)와 uv(pip install uv)는 install 단계에서 설치하고, python 버전은 runtime-versions로 고정합니다
+콘솔 위저드의 Deploy 스테이지 공급자 목록에는 CodeBuild가 없습니다 — 위저드로는 Build 스테이지까지 만들고, 생성 후 편집으로 Deploy 스테이지에 3액션을 배치하는 것이 정본 절차입니다
+sam deploy의 두 옵션은 파이프라인 전용입니다 — --no-confirm-changeset(사람이 확인을 눌러줄 수 없음)·--no-fail-on-empty-changeset(API 변경이 없는 커밋에서도 실패하지 않음)
+커밋이 곧 배포 단위가 됐습니다 — 에이전트·API·프론트가 한 git 히스토리에 있으니 문제가 생기면 git revert 한 번으로 풀스택 전체가 이전 상태로 돌아갑니다
