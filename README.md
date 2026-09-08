@@ -56,6 +56,11 @@ aws-training/
     └── mission/                        워크숍 미션 8개 (01~08, 번호 = 의존 순서)
 ```
 
+과정 폴더 번호는 들은 순서입니다. 알파벳 정렬이 학습 순서와 어긋나는 걸
+막기 위한 것으로, 새 과정을 추가하면 마지막 번호 다음을 붙입니다(기존
+번호는 재배치하지 않습니다). `labs/`는 특정 시점 과정이 아니라 과정에 안
+묶이는 실습의 상시 컨테이너라 번호를 붙이지 않습니다.
+
 `.kiro/`, `.claude/`, `.codex/`의 에이전트 설정은 **생성물**입니다. 직접
 수정하지 않고 `agents/<이름>/adapters/build.py`로 재생성합니다.
 
@@ -81,6 +86,26 @@ MCP 서버 설정을 리포에 포함해서, 클론한 사람이 같은 도구�
 | `aws-agentcore` | **비활성** | 도구를 90개 이상 노출해 컨텍스트를 크게 점유합니다. `labs/agentcore-setup`을 작업할 때만 `disabled: false`로 바꿉니다 |
 
 시크릿이 필요한 서버는 값이 아니라 환경변수 참조로 넣습니다.
+
+### 최상위에 있는 하네스 파일
+
+`CLAUDE.md`와 `.mcp.json`은 정리 대상이 아니라 **하네스가 워크스페이스
+루트에서만 찾는 필수 진입점**입니다. Claude Code는 이 두 파일을
+서브폴더(`.claude/` 등)에 두면 인식하지 못하므로 위치를 옮길 수 없습니다.
+
+```
+CLAUDE.md   Claude Code가 읽는 프로젝트 규칙 색인.
+            .claude/rules/(=.kiro/steering/ 심볼릭 링크)의 요약 + 색인 역할.
+.mcp.json   Claude Code용 워크스페이스 MCP 설정. 위 표의 그 파일.
+```
+
+나머지 하네스 설정(`.kiro/`, `.claude/`, `.codex/`)은 폴더로 묶여 있어
+최상위가 지저분해 보이지 않지만, 이 둘은 하네스 스펙상 예외입니다. 실제
+규칙 원본은 `.kiro/steering/`·`.kiro/skills/`에 있고 `.claude/rules`·
+`.claude/skills`는 그쪽으로의 심볼릭 링크이며, `.kiro/agents/`·
+`.claude/agents/`·`.claude/settings.json`·`.codex/`는 전부
+`agents/security/adapters/build.py`가 생성하는 산출물입니다(직접 수정
+금지, `agent-conventions` 규칙).
 
 보안 에이전트가 쓰는 스캐너 설치는
 [`agents/security/docs/setup-sec-tools.md`](./agents/security/docs/setup-sec-tools.md)에 있습니다.
